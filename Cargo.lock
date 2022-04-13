@@ -3,5 +3,14 @@
 version = 3
 
 [[package]]
+name = "r0"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd7a31eed1591dcbc95d92ad7161908e72f4677f8fabf2a32ca49b4237cbf211"
+
+[[package]]
 name = "test-d1-flash-bare"
 version = "0.1.0"
+dependencies = [
+ "r0",
+]

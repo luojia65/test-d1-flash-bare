@@ -26,6 +26,7 @@ SECTIONS {
     erodata = .;
     sdata = .;
     .data : {
+        sidata = LOADADDR(.data);
         *(.data .data.*)
         *(.sdata .sdata.*)
     }

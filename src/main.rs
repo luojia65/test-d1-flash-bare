@@ -27,6 +27,7 @@ pub unsafe extern "C" fn start() -> ! {
 }
 
 extern "C" fn main() {
+    init_bss();
     loop {}
 }
 
@@ -34,4 +35,18 @@ extern "C" fn main() {
 #[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
     loop {}
+}
+
+fn init_bss() {
+    extern "C" {
+        static mut ebss: u32;
+        static mut sbss: u32;
+        static mut edata: u32;
+        static mut sdata: u32;
+        static sidata: u32;
+    }
+    unsafe {
+        r0::zero_bss(&mut sbss, &mut ebss);
+        r0::init_data(&mut sdata, &mut edata, &sidata);
+    }
 }
