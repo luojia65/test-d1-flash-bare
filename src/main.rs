@@ -28,7 +28,12 @@ pub unsafe extern "C" fn start() -> ! {
 
 extern "C" fn main() {
     init_bss();
-    loop {}
+    let p = d1_pac::Peripherals::take().unwrap();
+    let uart = p.UART0;
+    loop {
+        uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
+        while !uart.usr.read().rfne().bit_is_set() {}
+    }
 }
 
 #[cfg_attr(not(test), panic_handler)]
