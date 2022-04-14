@@ -10,18 +10,24 @@ use core::panic::PanicInfo;
 // #[link_section = ".bss.uninit"]
 // static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
-// #[naked]
-// #[link_section = ".head.text"]
-// #[export_name = "head_jump"]
-// pub unsafe extern "C" fn head_jump() {
-//     asm!("j {}", sym start, options(noreturn))
-// }
+#[naked]
+#[link_section = ".head.text"]
+#[export_name = "head_jump"]
+pub unsafe extern "C" fn head_jump() {
+    asm!(
+        ".option push",
+        ".option rvc",
+        "c.j    0x60",
+        ".option pop",
+        // sym start,
+        options(noreturn)
+    )
+}
 
 // todo: option(noreturn) generates an extra `unimp` insn
 
 #[repr(C)]
 pub struct HeadData {
-    jump_instruction: u32,
     magic: [u8; 8],
     checksum: u32, // filled by blob generator
     length: u32, // filled by blob generator
@@ -36,7 +42,6 @@ pub struct HeadData {
 
 #[link_section = ".head.data"]
 pub static HEAD_DATA: HeadData = HeadData {
-    jump_instruction: 0,
     magic: *b"eGON.BT0",
     checksum: 0,
     length: 0,
@@ -50,7 +55,7 @@ pub static HEAD_DATA: HeadData = HeadData {
 };
 
 #[naked]
-#[link_section = ".text"]
+#[link_section = ".text.entry"]
 #[export_name = "start"]
 pub unsafe extern "C" fn start() -> ! {
     // asm!(
