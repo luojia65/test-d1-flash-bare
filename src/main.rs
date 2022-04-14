@@ -25,6 +25,19 @@ pub unsafe extern "C" fn start() -> ! {
     //     options(noreturn)
     // )
     asm!(
+        // open uart clock gate and reset gate
+        "li     t0, 0x0200190C",
+        "li     t1, (1 << 0) | (1 << 16)",
+        "sw     t1, 0(t0)",
+        // set gpio B8,B9 to uart0, B9 drive level 3
+        "li     t0, 0x02000000",
+        "lw     t1, 0x34(t0)",
+        "ori    t1, t1, 0b01100110",
+        "sw     t1, 0x34(t0)",
+        "lw     t1, 0x48(t0)",
+        "ori    t1, t1, 0b00110000",
+        "sw     t1, 0x48(t0)",
+        // write one char to uart
         "li     t0, 0x02500000",
         "li     t1, 82", // R
         "1:",
