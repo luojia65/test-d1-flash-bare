@@ -6,10 +6,9 @@ use std::path::PathBuf;
 const NEZHA_FLASH: &'static [u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(_start)
-BASE_ADDRESS = 0x40000000;
+BASE_ADDRESS = 0x00020000;
 SECTIONS {
     . = BASE_ADDRESS;
-    skernel = .;
     stext = .;
     .text : {
         *(.text.entry)
@@ -40,7 +39,6 @@ SECTIONS {
     }
     . = ALIGN(4);
     ebss = .;
-    ekernel = .;
     /DISCARD/ : {
         *(.eh_frame)
     }
