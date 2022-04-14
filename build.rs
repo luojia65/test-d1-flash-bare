@@ -5,13 +5,16 @@ use std::path::PathBuf;
 
 const NEZHA_FLASH: &'static [u8] = b"
 OUTPUT_ARCH(riscv)
-ENTRY(_start)
-BASE_ADDRESS = 0x00020000;
+ENTRY(head_jump)
 SECTIONS {
-    . = BASE_ADDRESS;
+    .head.text : {
+        *(.head.text)
+    }
+    .head.data : {
+        KEEP(*(.head.data))
+    }
     stext = .;
     .text : {
-        *(.text.entry)
         *(.text .text.*)
     }
     . = ALIGN(4);

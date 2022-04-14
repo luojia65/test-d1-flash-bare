@@ -11,8 +11,19 @@ use core::panic::PanicInfo;
 // static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
 #[naked]
-#[link_section = ".text.entry"]
-#[export_name = "_start"]
+#[link_section = ".head.text"]
+#[export_name = "head_jump"]
+pub unsafe extern "C" fn head_jump() {
+    asm!("j {}", sym start, options(noreturn))
+}
+
+// todo: option(noreturn) generates an extra `unimp` insn
+
+#[link_section = ".head.data"]
+pub static HEAD_DATA: [u8; 30] = [0u8; 30]; // todo
+
+#[naked]
+#[link_section = ".text"]
 pub unsafe extern "C" fn start() -> ! {
     // asm!(
     //     "la     sp, {stack}",
@@ -43,19 +54,22 @@ pub unsafe extern "C" fn start() -> ! {
         "1:",
         "sb     t1, 0(t0)",
         "j      1b",
+        "j      {}",
+        sym main,
         options(noreturn)
     )
 }
 
-// extern "C" fn main() {
-//     init_bss();
-//     let p = d1_pac::Peripherals::take().unwrap();
-//     let uart = p.UART0;
-//     loop {
-//         uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
-//         while !uart.usr.read().rfne().bit_is_set() {}
-//     }
-// }
+extern "C" fn main() {
+    unsafe { asm!("la a0, {}", sym HEAD_DATA) };
+    // init_bss();
+    // let p = d1_pac::Peripherals::take().unwrap();
+    // let uart = p.UART0;
+    // loop {
+    //     uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
+    //     while !uart.usr.read().rfne().bit_is_set() {}
+    // }
+}
 
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]
