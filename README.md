@@ -18,6 +18,8 @@ It defaults to debug mode. If you want to build under release mode, use `cargo m
 
 ## Dump assembly code
 
+Auto detect objdump command and print assembly code:
+
 ```
 cargo asm
 ```

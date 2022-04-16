@@ -98,7 +98,7 @@ fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
 }
 
 fn find_binutils_prefix() -> &'static str {
-    for prefix in ["rust-", "riscv64-unknown-elf-"] {
+    for prefix in ["rust-", "riscv64-unknown-elf-", "riscv64-linux-gnu-"] {
         let mut command = Command::new(format!("{}objcopy", prefix));
         command.arg("--version");
         command.stdout(Stdio::null());
