@@ -4,3 +4,8 @@ members = [
     "xtask"
 ]
 default-members = ["xtask"]
+
+# Leave debug symbol information on release compilation mode
+# That's okay, these symbols won't appear on flash binary
+[profile.release]
+debug = true
