@@ -12,11 +12,25 @@ Use following command:
 cargo make
 ```
 
-Your flash binary should be at: `target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0.bin`.
+This command should build the project, generate a binary, fix length and calculate checksum, finally
+it would produce flashable binary at `target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0.bin`.
 
 It defaults to debug mode. If you want to build under release mode, use `cargo make --release`.
 Due to configuration on cargo workspace, the output ELF still includes debug symbols even on release mode;
 however this won't affect target flash binary for those symbols will get stripped on binary generation.
+
+## Build and burn into flash
+
+Use following command:
+
+```
+cargo flash
+```
+
+It would do all `cargo make` functions, and burn it into NAND flash on a xfel connected board.
+The D1 chip must be in FEL mode before running this command.
+
+_TODO: support NOR flash_
 
 ## Dump assembly code
 

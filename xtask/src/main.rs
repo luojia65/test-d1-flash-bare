@@ -16,8 +16,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Build ELF and binary for test flash
+    /// Make ELF and binary for this project
     Make {
+        #[clap(flatten)]
+        env: Env,
+    },
+    /// Build flash and burn into FEL mode board
+    Flash {
         #[clap(flatten)]
         env: Env,
     },
@@ -49,6 +54,16 @@ fn main() {
             xtask_build_d1_flash_bt0(env);
             xtask_binary_d1_flash_bt0(binutils_prefix, env);
             xtask_finialize_d1_flash_bt0(env);
+        }
+        Commands::Flash { env } => {
+            println!("xtask: build D1 binary and burn");
+            let xfel = find_xfel();
+            xfel_find_connected_device(xfel);
+            let binutils_prefix = find_binutils_prefix();
+            xtask_build_d1_flash_bt0(env);
+            xtask_binary_d1_flash_bt0(binutils_prefix, env);
+            xtask_finialize_d1_flash_bt0(env);
+            xtask_burn_d1_flash_bt0(xfel, env);
         }
         Commands::Asm { env } => {
             println!("xtask: build D1 flash ELF and view assembly");
@@ -127,6 +142,19 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
     // for C language developers: file is automatically closed when variable is out of scope
 }
 
+fn xtask_burn_d1_flash_bt0(xfel: &str, env: &Env) {
+    let mut command = Command::new(xfel);
+    command.current_dir(dist_dir(env));
+    command.arg("spinand");
+    command.args(["write", "0"]);
+    command.arg("test-d1-flash-bt0.bin");
+    let status = command.status().unwrap();
+    if !status.success() {
+        println!("objcopy binary failed");
+        process::exit(1);
+    }
+}
+
 fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
     Command::new(format!("{}objdump", prefix))
         .current_dir(dist_dir(env))
@@ -134,6 +162,31 @@ fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
         .arg("-d")
         .status()
         .unwrap();
+}
+
+fn find_xfel() -> &'static str {
+    let mut command = Command::new("xfel");
+    command.stdout(Stdio::null());
+    let status = command.status().unwrap();
+    if status.success() {
+        return "xfel";
+    }
+    panic!(
+        "error: xfel not found
+    install xfel from: https://github.com/xboot/xfel"
+    );
+}
+
+fn xfel_find_connected_device(xfel: &str) {
+    let mut command = Command::new(xfel);
+    command.arg("version");
+    let output = command.output().unwrap();
+    if !output.status.success() {
+        println!("xfel failed with code {}", output.status);
+        println!("Is your device in FEL mode?");
+        process::exit(1);
+    }
+    println!("Found {}", String::from_utf8_lossy(&output.stdout).trim());
 }
 
 fn find_binutils_prefix() -> &'static str {
