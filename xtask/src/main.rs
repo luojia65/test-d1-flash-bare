@@ -14,37 +14,57 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Build ELF and binary for test flash
-    Make {},
+    Make {
+        #[clap(flatten)]
+        env: Env,
+    },
     /// View test flash assembly code
-    Asm {},
+    Asm {
+        #[clap(flatten)]
+        env: Env,
+    },
+}
+
+#[derive(clap::Args)]
+struct Env {
+    #[clap(
+        long = "release",
+        global = true,
+        help = "Build in release mode",
+        long_help = None,
+    )]
+    release: bool,
 }
 
 fn main() {
     let args = Cli::parse();
 
     match &args.command {
-        Commands::Make {} => {
+        Commands::Make { env } => {
             println!("xtask: make D1 flash binary");
             let binutils_prefix = find_binutils_prefix();
-            xtask_build_d1_flash_bt0();
-            xtask_binary_d1_flash_bt0(binutils_prefix);
+            xtask_build_d1_flash_bt0(env);
+            xtask_binary_d1_flash_bt0(binutils_prefix, env);
         }
-        Commands::Asm {  } => {
+        Commands::Asm { env } => {
             println!("xtask: build D1 flash ELF and view assembly");
             let binutils_prefix = find_binutils_prefix();
-            xtask_build_d1_flash_bt0();
-            xtask_dump_d1_flash_bt0(binutils_prefix);
+            xtask_build_d1_flash_bt0(env);
+            xtask_dump_d1_flash_bt0(binutils_prefix, env);
         }
     }
 }
 
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
 
-fn xtask_build_d1_flash_bt0() {
+fn xtask_build_d1_flash_bt0(env: &Env) {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let mut command = Command::new(cargo);
     command.current_dir(project_root().join("test-d1-flash-bt0"));
     command.arg("build");
+    if env.release {
+        command.arg("--release");
+    }
     let status = command.status().unwrap();
     if !status.success() {
         eprintln!("xtask: cargo build failed with {}", status);
@@ -52,9 +72,9 @@ fn xtask_build_d1_flash_bt0() {
     }
 }
 
-fn xtask_binary_d1_flash_bt0(prefix: &str) {
+fn xtask_binary_d1_flash_bt0(prefix: &str, env: &Env) {
     let status = Command::new(format!("{}objcopy", prefix))
-        .current_dir(dist_dir())
+        .current_dir(dist_dir(env))
         .arg("test-d1-flash-bt0")
         .arg("--binary-architecture=riscv64")
         .arg("--strip-all")
@@ -68,9 +88,9 @@ fn xtask_binary_d1_flash_bt0(prefix: &str) {
     }
 }
 
-fn xtask_dump_d1_flash_bt0(prefix: &str) {
+fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
     Command::new(format!("{}objdump", prefix))
-        .current_dir(dist_dir())
+        .current_dir(dist_dir(env))
         .arg("test-d1-flash-bt0")
         .arg("-d")
         .status()
@@ -102,12 +122,11 @@ fn project_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn dist_dir() -> PathBuf {
+fn dist_dir(env: &Env) -> PathBuf {
     let mut path_buf = project_root().join("target").join(DEFAULT_TARGET);
-    // path_buf = match xtask_env.compile_mode {
-    //     CompileMode::Debug => path_buf.join("debug"),
-    //     CompileMode::Release => path_buf.join("release"),
-    // };
-    path_buf = path_buf.join("debug");
+    path_buf = match env.release {
+        false => path_buf.join("debug"),
+        true => path_buf.join("release"),
+    };
     path_buf
 }
