@@ -15,6 +15,8 @@ cargo make
 Your flash binary should be at: `target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0.bin`.
 
 It defaults to debug mode. If you want to build under release mode, use `cargo make --release`.
+Due to configuration on cargo workspace, the output ELF still includes debug symbols even on release mode;
+however this won't affect target flash binary for those symbols will get stripped on binary generation.
 
 ## Dump assembly code
 
@@ -28,9 +30,13 @@ Use `cargo asm --release` to dump under release build configuration.
 
 ## Notes
 
-Jump over header instuction
+1. Jump over header instuction
 
 ```
 0000000000000000 <head_jump>:
        0: 6f 00 40 06   j       0x64
 ```
+2. The `start` function may not locate on the beginning of image.
+
+It may be placed on middle of it; flash blob generator (typically bundled xtask) shoule use information
+in ELF file to judge which address should we jump to when it comes to flash header jump instruction.
