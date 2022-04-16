@@ -13,7 +13,7 @@ Your flash binary should be at: `target\riscv64imac-unknown-none-elf\debug\test-
 Dump assembly code
 
 ```
-rust-objdump target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0 -d
+cargo asm
 ```
 
 Jump over header instuction

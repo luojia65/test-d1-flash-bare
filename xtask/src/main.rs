@@ -15,6 +15,8 @@ struct Cli {
 enum Commands {
     /// Build ELF and binary for test flash
     Make {},
+    /// View test flash assembly code
+    Asm {},
 }
 
 fn main() {
@@ -22,19 +24,21 @@ fn main() {
 
     match &args.command {
         Commands::Make {} => {
-            println!("xtask: make d1 flash binary");
-            xtask_make_d1_flash_bt0();
+            println!("xtask: make D1 flash binary");
+            let binutils_prefix = find_binutils_prefix();
+            xtask_build_d1_flash_bt0();
+            xtask_binary_d1_flash_bt0(binutils_prefix);
+        }
+        Commands::Asm {  } => {
+            println!("xtask: build D1 flash ELF and view assembly");
+            let binutils_prefix = find_binutils_prefix();
+            xtask_build_d1_flash_bt0();
+            xtask_dump_d1_flash_bt0(binutils_prefix);
         }
     }
 }
 
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
-
-fn xtask_make_d1_flash_bt0() {
-    let objcopy = prepare_objcopy();
-    xtask_build_d1_flash_bt0();
-    xtask_binary_d1_flash_bt0(objcopy);
-}
 
 fn xtask_build_d1_flash_bt0() {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
@@ -48,8 +52,8 @@ fn xtask_build_d1_flash_bt0() {
     }
 }
 
-fn xtask_binary_d1_flash_bt0(mut objcopy: Command) {
-    let status = objcopy
+fn xtask_binary_d1_flash_bt0(prefix: &str) {
+    let status = Command::new(format!("{}objcopy", prefix))
         .current_dir(dist_dir())
         .arg("test-d1-flash-bt0")
         .arg("--binary-architecture=riscv64")
@@ -64,14 +68,23 @@ fn xtask_binary_d1_flash_bt0(mut objcopy: Command) {
     }
 }
 
-fn prepare_objcopy() -> Command {
-    for name in ["rust-objcopy", "riscv64-unknown-elf-objcopy"] {
-        let mut command = Command::new(name);
+fn xtask_dump_d1_flash_bt0(prefix: &str) {
+    Command::new(format!("{}objdump", prefix))
+        .current_dir(dist_dir())
+        .arg("test-d1-flash-bt0")
+        .arg("-d")
+        .status()
+        .unwrap();
+}
+
+fn find_binutils_prefix() -> &'static str {
+    for prefix in ["rust-", "riscv64-unknown-elf-"] {
+        let mut command = Command::new(format!("{}objcopy", prefix));
         command.arg("--version");
         command.stdout(Stdio::null());
         let status = command.status().unwrap();
         if status.success() {
-            return Command::new(name);
+            return prefix;
         }
     }
     panic!(
