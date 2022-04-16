@@ -1,12 +1,11 @@
 #![feature(naked_functions, asm_sym, asm_const)]
-
 #![no_std]
 #![no_main]
 use core::arch::asm;
 use core::panic::PanicInfo;
 
 // const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
-// const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE; 
+// const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 // #[link_section = ".bss.uninit"]
 // static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
@@ -30,7 +29,7 @@ pub unsafe extern "C" fn head_jump() {
 pub struct HeadData {
     magic: [u8; 8],
     checksum: u32, // filled by blob generator
-    length: u32, // filled by blob generator
+    length: u32,   // filled by blob generator
     pub_head_size: u32,
     fel_script_address: u32,
     fel_uenv_length: u32,

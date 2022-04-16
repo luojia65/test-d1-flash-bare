@@ -1,10 +1,6 @@
-[package]
-name = "test-d1-flash-bare"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-r0 = "1"
-# d1-pac = "0.0.17"
+[workspace]
+members = [
+    "test-d1-flash-bt0",
+    "xtask"
+]
+default-members = ["xtask"]

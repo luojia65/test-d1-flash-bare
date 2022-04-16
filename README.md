@@ -2,22 +2,18 @@
 
 Prerequisites: you need to install Rust and build target `riscv64imac-unknown-none-elf`.
 
-Build project
+Build flash binary
 
 ```
-cargo build
+cargo make
 ```
+
+Your flash binary should be at: `target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0.bin`.
 
 Dump assembly code
 
 ```
-rust-objdump target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bare -d
-```
-
-Get flash binary
-
-```
-rust-objcopy target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bare --binary-architecture=riscv64 --strip-all -O binary target\flash.bin
+rust-objdump target\riscv64imac-unknown-none-elf\debug\test-d1-flash-bt0 -d
 ```
 
 Jump over header instuction

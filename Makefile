@@ -1,4 +1,4 @@
-BIN_NAME := test-d1-flash-bare
+PACKAGE_NAME := test-d1-flash-bt0
 TARGET_DIR := target/riscv64imac-unknown-none-elf
 DEBUG_DIR := $(TARGET_DIR)/debug
 RELEASE_DIR := $(TARGET_DIR)/release
@@ -13,16 +13,16 @@ flash: all
 	$(XFEL) $(FLASH_TYPE) write 0x0 $(RELEASE_DIR)/flash.bin
 
 debug:
-	cargo build
+	cargo build -p $(PACKAGE_NAME)
 
 release:
-	cargo build --release
+	cargo build -p $(PACKAGE_NAME)--release
 
 objdump:
-	rust-objdump $(DEBUG_DIR)/$(BIN_NAME) -d
+	rust-objdump $(DEBUG_DIR)/$(PACKAGE_NAME) -d
 
 flashbin:
-	rust-objcopy $(RELEASE_DIR)/$(BIN_NAME) \
+	rust-objcopy $(RELEASE_DIR)/$(PACKAGE_NAME) \
 		--binary-architecture=riscv64 --strip-all -O binary $(RELEASE_DIR)/flash.bin
 
 hexdump: all
