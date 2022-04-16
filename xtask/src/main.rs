@@ -3,8 +3,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
 use std::fs::File;
-use std::io::{SeekFrom, Seek};
-use byteorder::{LittleEndian, WriteBytesExt};
+use std::io::{SeekFrom, Seek, ErrorKind};
+use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Parser)]
 #[clap(name = "xtask")]
@@ -96,7 +96,7 @@ const EGON_HEADER_LENGTH: u64 = 0x60;
 
 // This function does:
 // 1. fill in binary length
-// 2. calculate CRC of bt0 image
+// 2. calculate checksum of bt0 image; old checksum value must be filled as stamp value
 fn xtask_finialize_d1_flash_bt0(env: &Env) {
     let path = dist_dir(env);
     let mut file = File::options().read(true).write(true).open(path.join("test-d1-flash-bt0.bin"))
@@ -105,14 +105,23 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
     if total_length < EGON_HEADER_LENGTH {
         panic!("objcopy binary size less than eGON header length, expected >= {} but is {}", EGON_HEADER_LENGTH, total_length);
     }
-    let payload_length = total_length - EGON_HEADER_LENGTH;
-    if payload_length > u32::MAX as u64 {
-        panic!("binary too long for eGON header; expected < 2^32 but is {}", payload_length);
-    }
-    let payload_length = payload_length as u32;
+    let total_length = total_length as u32;
     file.seek(SeekFrom::Start(0x10)).unwrap();
-    file.write_u32::<LittleEndian>(payload_length).unwrap(); // fixme: fixed endian
-    let checksum = 0xFFFFFFFF as u32; // todo
+    file.write_u32::<LittleEndian>(total_length).unwrap(); // fixme: fixed endian
+    file.seek(SeekFrom::Start(0x0C)).unwrap();
+    let stamp = file.read_u32::<LittleEndian>().unwrap();
+    if stamp != 0x5F0A6C39 {
+        panic!("wrong stamp value; check your generated blob and try again")
+    }
+    let mut checksum: u32 = 0;
+    file.seek(SeekFrom::Start(0)).unwrap();
+    loop {
+        match file.read_u32::<LittleEndian>() {
+            Ok(val) => checksum = checksum.wrapping_add(val),
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+            Err(e) => panic!("io error while calculating checksum: {:?}", e)
+        }
+    }
     file.seek(SeekFrom::Start(0x0C)).unwrap();
     file.write_u32::<LittleEndian>(checksum).unwrap(); // fixme: fixed endian
     // for C language developers: file is automatically closed when variable is out of scope

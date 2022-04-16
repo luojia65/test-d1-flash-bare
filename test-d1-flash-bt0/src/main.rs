@@ -28,8 +28,8 @@ pub unsafe extern "C" fn head_jump() {
 #[repr(C)]
 pub struct HeadData {
     magic: [u8; 8],
-    checksum: u32, // filled by blob generator
-    length: u32,   // filled by blob generator
+    checksum: u32,
+    length: u32,
     pub_head_size: u32,
     fel_script_address: u32,
     fel_uenv_length: u32,
@@ -39,11 +39,13 @@ pub struct HeadData {
     string_pool: [u32; 13],
 }
 
+const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
+
 #[link_section = ".head.data"]
 pub static HEAD_DATA: HeadData = HeadData {
     magic: *b"eGON.BT0",
-    checksum: 0, // filled by blob generator
-    length: 0, // filled by blob generator
+    checksum: STAMP_CHECKSUM, // real checksum filled by blob generator
+    length: 0, // real size filled by blob generator
     pub_head_size: 0,
     fel_script_address: 0,
     fel_uenv_length: 0,
