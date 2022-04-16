@@ -36,7 +36,3 @@ Use `cargo asm --release` to dump under release build configuration.
 0000000000000000 <head_jump>:
        0: 6f 00 40 06   j       0x64
 ```
-2. The `start` function may not locate on the beginning of image.
-
-It may be placed on middle of it; flash blob generator (typically bundled xtask) shoule use information
-in ELF file to judge which address should we jump to when it comes to flash header jump instruction.
