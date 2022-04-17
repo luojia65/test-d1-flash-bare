@@ -107,8 +107,15 @@ extern "C" fn main() {
 }
 
 use core::ptr::{read_volatile, write_volatile};
+
 fn configure_gpio_pf_port() {
-    
+    let pf_cfg0 = unsafe { read_volatile(0x0200_00f0 as *const u32) };
+    // PF5 Select: R-JRAG-CK
+    // PF3 Select: R-JRAG-DO
+    // PF1 Select: R-JRAG-DI
+    // PF0 Select: R-JRAG-MS
+    let new_value = (pf_cfg0 & 0xff0f0f00) | 0x00404044;
+    unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
