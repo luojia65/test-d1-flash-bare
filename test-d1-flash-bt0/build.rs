@@ -6,41 +6,43 @@ use std::path::PathBuf;
 const NEZHA_FLASH: &'static [u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(head_jump)
+MEMORY {
+    FLASH : ORIGIN = 0x00000000, LENGTH = 256K
+    SRAM : ORIGIN = 0x00020000, LENGTH = 64K32K
+}
 SECTIONS {
     .head.text : {
         *(.head.text)
-    }
+    } > FLASH
     .head.data : {
         KEEP(*(.head.data))
-    }
+    } > FLASH
     .text : {
         KEEP(*(.text.entry))
         *(.text .text.*)
-    }
-    . = ALIGN(4);
-    srodata = .;
-    .rodata : {
+    } > FLASH
+    .rodata : ALIGN(4) {
+        srodata = .;
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
-    }
-    . = ALIGN(4);
-    erodata = .;
-    sdata = .;
-    .data : {
-        sidata = LOADADDR(.data);
+        . = ALIGN(4);
+        erodata = .;
+    } > SRAM
+    .data : ALIGN(4) {
+        sdata = .;
         *(.data .data.*)
         *(.sdata .sdata.*)
-    }
-    . = ALIGN(4);
-    edata = .;
-    .bss : {
+        . = ALIGN(4);
+        edata = .;
+    } > SRAM
+    sidata = LOADADDR(.data);
+    .bss (NOLOAD) : ALIGN(4) {
         *(.bss.uninit)
         sbss = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
-    }
-    . = ALIGN(4);
-    ebss = .;
+        ebss = .;
+    } > SRAM
     /DISCARD/ : {
         *(.eh_frame)
     }

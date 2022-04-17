@@ -4,10 +4,10 @@
 use core::arch::asm;
 use core::panic::PanicInfo;
 
-// const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
-// const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
-// #[link_section = ".bss.uninit"]
-// static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
+const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
+#[link_section = ".bss.uninit"]
+static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
 
 #[naked]
 #[link_section = ".head.text"]
@@ -41,6 +41,7 @@ pub struct HeadData {
 
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
+// clobber used by KEEP(*(.head.data)) in link script
 #[link_section = ".head.data"]
 pub static HEAD_DATA: HeadData = HeadData {
     magic: *b"eGON.BT0",
@@ -59,50 +60,55 @@ pub static HEAD_DATA: HeadData = HeadData {
 #[export_name = "start"]
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
-    // asm!(
-    //     "la     sp, {stack}",
-    //     "li     t0, {per_hart_stack_size}",
-    //     "add    sp, sp, t0",
-    //     "j      {main}",
-    //     per_hart_stack_size = const PER_HART_STACK_SIZE,
-    //     stack = sym SBI_STACK,
-    //     main = sym main,
-    //     options(noreturn)
-    // )
     asm!(
-        // open uart clock gate and reset gate
-        "li     t0, 0x0200190C",
-        "li     t1, (1 << 0) | (1 << 16)",
-        "sw     t1, 0(t0)",
-        // set gpio B8,B9 to uart0, B9 drive level 3
-        "li     t0, 0x02000000",
-        "lw     t1, 0x34(t0)",
-        "ori    t1, t1, 0b01100110",
-        "sw     t1, 0x34(t0)",
-        "lw     t1, 0x48(t0)",
-        "ori    t1, t1, 0b00110000",
-        "sw     t1, 0x48(t0)",
-        // write one char to uart
-        "li     t0, 0x02500000",
-        "li     t1, 82", // R
-        "1:",
-        "sb     t1, 0(t0)",
-        "j      1b", // todo: remove when there's uart output
-        "j      {}",
-        sym main,
+        "la     sp, {stack}",
+        "li     t0, {per_hart_stack_size}",
+        "add    sp, sp, t0",
+        "j      {main}",
+        stack = sym SBI_STACK,
+        per_hart_stack_size = const PER_HART_STACK_SIZE,
+        main = sym main,
         options(noreturn)
     )
+    // asm!(
+    //     // open uart clock gate and reset gate
+    //     "li     t0, 0x0200190C",
+    //     "li     t1, (1 << 0) | (1 << 16)",
+    //     "sw     t1, 0(t0)",
+    //     // set gpio B8,B9 to uart0, B9 drive level 3
+    //     "li     t0, 0x02000000",
+    //     "lw     t1, 0x34(t0)",
+    //     "ori    t1, t1, 0b01100110",
+    //     "sw     t1, 0x34(t0)",
+    //     "lw     t1, 0x48(t0)",
+    //     "ori    t1, t1, 0b00110000",
+    //     "sw     t1, 0x48(t0)",
+    //     // write one char to uart
+    //     "li     t0, 0x02500000",
+    //     "li     t1, 82", // R
+    //     "1:",
+    //     "sb     t1, 0(t0)",
+    //     "j      1b", // todo: remove when there's uart output
+    //     "j      {}",
+    //     sym main,
+    //     options(noreturn)
+    // )
 }
 
 extern "C" fn main() {
     init_bss();
-    unsafe { asm!("la a0, {}", sym HEAD_DATA) };
+    configure_gpio_pf_port();
     // let p = d1_pac::Peripherals::take().unwrap();
     // let uart = p.UART0;
     // loop {
     //     uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
     //     while !uart.usr.read().rfne().bit_is_set() {}
     // }
+}
+
+use core::ptr::{read_volatile, write_volatile};
+fn configure_gpio_pf_port() {
+    
 }
 
 #[cfg_attr(not(test), panic_handler)]
