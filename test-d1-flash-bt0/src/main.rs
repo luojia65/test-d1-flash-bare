@@ -64,9 +64,11 @@ pub unsafe extern "C" fn start() -> ! {
         "la     sp, {stack}",
         "li     t0, {per_hart_stack_size}",
         "add    sp, sp, t0",
+        "la     a0, {head_data}",
         "j      {main}",
         stack = sym SBI_STACK,
         per_hart_stack_size = const PER_HART_STACK_SIZE,
+        head_data = sym HEAD_DATA,
         main = sym main,
         options(noreturn)
     )
