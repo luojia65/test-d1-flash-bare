@@ -98,6 +98,8 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() {
     init_bss();
     configure_gpio_pf_port();
+    configure_uart_peripheral();
+    configure_ccu_clocks();
     // let p = d1_pac::Peripherals::take().unwrap();
     // let uart = p.UART0;
     // loop {
@@ -116,6 +118,73 @@ fn configure_gpio_pf_port() {
     // PF0 Select: R-JRAG-MS
     let new_value = (pf_cfg0 & 0xff0f0f00) | 0x00404044;
     unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
+}
+
+fn configure_uart_peripheral() {
+    let pb_cfg1 = unsafe { read_volatile(0x0200_0034 as *const u32) };
+    // PB1 Select: UART0-RX
+    // PB0 Select: UART0-TX
+    let new_value = (pb_cfg1 & 0xffffff00) | 0x66;
+    unsafe { write_volatile(0x0200_0034 as *mut u32, new_value) };
+    let ccu_uart_bgr = unsafe { read_volatile(0x0200_190c as *const u32) };
+    // UART4_GATING: Pass
+    // UART0_GATING: Pass
+    let new_value = ccu_uart_bgr | 0x10001;
+    unsafe { write_volatile(0x0200_190c as *mut u32, new_value) };
+    // Uart0 DivisorLatch LO: 0xD
+    // Uart0 DivisorLatch HI: 0x0
+    unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
+    unsafe { write_volatile(0x0250_0004 as *mut u32, 0) };
+    // Uart0 FifoControl
+    // RCVR Trigger: FIFO-2 less than full
+    // TX Empty Trigger: FIFO 1/2 Full
+    // DMA Mode: Mode 0
+    // XMIT FIFO Reset: 1
+    // RCVR FIFO Reset: 1
+    // Fifo Enable: 1
+    unsafe { write_volatile(0x0250_0008 as *mut u32, 0xF7) };
+    let uart0_line_control = unsafe { read_volatile(0x0250_000c as *const u32) };
+    // Uart0 Line control
+    // Divisor latch access, break control: unmodified
+    // Parity: disabled
+    // Stop bit: 1 bit
+    // Data length: 8 bits
+    let new_value = (uart0_line_control & 0xffffff60) | 3;
+    unsafe { write_volatile(0x0250_000c as *mut u32, new_value) };
+    // Uart0 modem control
+    // Uart function: UART mode
+    // Auto flow control: disabled
+    // Loop back or normal mode: normal mode
+    // RTS value: 0
+    // DTR value: 0
+    unsafe { write_volatile(0x0250_0010 as *mut u32, 0) };
+}
+
+fn configure_ccu_clocks() {
+    let pll_cpu_ctrl = unsafe { read_volatile(0x0200_1000 as *const u32) };
+    // 11010111 11111100 00000000 11111100
+    // 11001000 00000000 00101001 00000000
+    // PLL CPU control
+    // Enable: 1
+    // LDO Enable: 1
+    // Lock enable: 0
+    // PLL output gate: enable
+    // PLL N: 42
+    // PLL Unlock level: 21-29 clock cycles
+    // PLL Lock level: 24-26 clock cycles
+    // PLL M: 1
+    let new_value = (pll_cpu_ctrl & 0xD7FC00FC) | 0xC8002900;
+    unsafe { write_volatile(0x0200_1000 as *mut u32, new_value) };
+    // APB0 clock configuration; APB0_CLK = source frequency / (N * M)
+    // Clock source: PLL_PERI(1x)
+    // Divide factor N: 2 (1 << _0x1_)
+    // Divide factor M: 3 (_0x2_ + 1)
+    unsafe { write_volatile(0x0200_1520 as *mut u32, 0x0300_0102) };
+    // RISC-V Clock
+    // Clock source: PLL_CPU
+    // Divide factor N: 2
+    // Divide factor M: 1
+    unsafe { write_volatile(0x0200_1d00 as *mut u32, 0x0500_0100) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
