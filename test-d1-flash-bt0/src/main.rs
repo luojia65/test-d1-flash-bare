@@ -100,6 +100,24 @@ extern "C" fn main() {
     configure_gpio_pf_port();
     configure_uart_peripheral();
     configure_ccu_clocks();
+    uart0_putchar(b'T');
+    uart0_putchar(b'e');
+    uart0_putchar(b's');
+    uart0_putchar(b't');
+    uart0_putchar(b'\r');
+    uart0_putchar(b'\n');
+    loop {
+        uart0_putchar(b'R');
+        uart0_putchar(b'u');
+        uart0_putchar(b's');
+        uart0_putchar(b't');
+        uart0_putchar(b'\r');
+        uart0_putchar(b'\n');
+        for _ in 0..50000000 { // delay
+            unsafe { asm!("nop") };
+        }
+    }
+
     // let p = d1_pac::Peripherals::take().unwrap();
     // let uart = p.UART0;
     // loop {
@@ -185,6 +203,17 @@ fn configure_ccu_clocks() {
     // Divide factor N: 2
     // Divide factor M: 1
     unsafe { write_volatile(0x0200_1d00 as *mut u32, 0x0500_0100) };
+}
+
+fn uart0_putchar(a: u8) {
+    loop {
+        let uart0_status = unsafe { read_volatile(0x0250_007C as *const u32) };
+        if uart0_status & 0x2 != 0 { // TX FIFO is empty
+            break;
+        }
+    }
+    // write to uart transmitting holding register
+    unsafe { write_volatile(0x0250_0000 as *mut u32, a as u32) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
