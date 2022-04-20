@@ -46,7 +46,7 @@ const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 pub static HEAD_DATA: HeadData = HeadData {
     magic: *b"eGON.BT0",
     checksum: STAMP_CHECKSUM, // real checksum filled by blob generator
-    length: 0, // real size filled by blob generator
+    length: 0,                // real size filled by blob generator
     pub_head_size: 0,
     fel_script_address: 0,
     fel_uenv_length: 0,
@@ -115,7 +115,8 @@ extern "C" fn main() {
         uart0_putchar(b't');
         uart0_putchar(b'\r');
         uart0_putchar(b'\n');
-        for _ in 0..50000000 { // delay
+        for _ in 0..50000000 {
+            // delay
             unsafe { asm!("nop") };
         }
     }
@@ -210,7 +211,8 @@ fn configure_ccu_clocks() {
 fn uart0_putchar(a: u8) {
     loop {
         let uart0_status = unsafe { read_volatile(0x0250_007C as *const u32) };
-        if uart0_status & 0x2 != 0 { // TX FIFO is empty
+        if uart0_status & 0x2 != 0 {
+            // TX FIFO is empty
             break;
         }
     }

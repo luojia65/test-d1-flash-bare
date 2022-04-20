@@ -1,10 +1,10 @@
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use clap::{Parser, Subcommand};
 use std::env;
+use std::fs::File;
+use std::io::{ErrorKind, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, Stdio};
-use std::fs::File;
-use std::io::{SeekFrom, Seek, ErrorKind};
-use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 
 #[derive(Parser)]
 #[clap(name = "xtask")]
@@ -114,11 +114,17 @@ const EGON_HEADER_LENGTH: u64 = 0x60;
 // 2. calculate checksum of bt0 image; old checksum value must be filled as stamp value
 fn xtask_finialize_d1_flash_bt0(env: &Env) {
     let path = dist_dir(env);
-    let mut file = File::options().read(true).write(true).open(path.join("test-d1-flash-bt0.bin"))
+    let mut file = File::options()
+        .read(true)
+        .write(true)
+        .open(path.join("test-d1-flash-bt0.bin"))
         .expect("open output binary file");
     let total_length = file.metadata().unwrap().len();
     if total_length < EGON_HEADER_LENGTH {
-        panic!("objcopy binary size less than eGON header length, expected >= {} but is {}", EGON_HEADER_LENGTH, total_length);
+        panic!(
+            "objcopy binary size less than eGON header length, expected >= {} but is {}",
+            EGON_HEADER_LENGTH, total_length
+        );
     }
     let total_length = total_length as u32;
     file.seek(SeekFrom::Start(0x10)).unwrap();
@@ -134,12 +140,12 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
         match file.read_u32::<LittleEndian>() {
             Ok(val) => checksum = checksum.wrapping_add(val),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
-            Err(e) => panic!("io error while calculating checksum: {:?}", e)
+            Err(e) => panic!("io error while calculating checksum: {:?}", e),
         }
     }
     file.seek(SeekFrom::Start(0x0C)).unwrap();
     file.write_u32::<LittleEndian>(checksum).unwrap(); // fixme: fixed endian
-    // for C language developers: file is automatically closed when variable is out of scope
+                                                       // for C language developers: file is automatically closed when variable is out of scope
 }
 
 fn xtask_burn_d1_flash_bt0(xfel: &str, env: &Env) {

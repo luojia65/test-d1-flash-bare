@@ -7,20 +7,19 @@ const NEZHA_FLASH: &'static [u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(head_jump)
 MEMORY {
-    FLASH : ORIGIN = 0x00000000, LENGTH = 256K
     SRAM : ORIGIN = 0x00020000, LENGTH = 32K
 }
 SECTIONS {
     .head.text : {
         *(.head.text)
-    } > FLASH
+    } > SRAM
     .head.data : {
         KEEP(*(.head.data))
-    } > FLASH
+    } > SRAM
     .text : {
         KEEP(*(.text.entry))
         *(.text .text.*)
-    } > FLASH
+    } > SRAM
     .rodata : ALIGN(4) {
         srodata = .;
         *(.rodata .rodata.*)
