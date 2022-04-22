@@ -1,8 +1,13 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
+mod hal;
+
+use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
 use core::panic::PanicInfo;
+use core::{fmt::Write, str};
+use d1_pac::{ccu, Peripherals};
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -127,6 +132,41 @@ extern "C" fn main() {
     //     uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
     //     while !uart.usr.read().rfne().bit_is_set() {}
     // }
+
+    /*
+    unsafe { asm!("la a0, {}", sym HEAD_DATA) };
+    init_bss();
+    let p = Peripherals::take().unwrap();
+    let s = Serial::new(UART0_BASE);
+    // let s = Serial::new(p.UART0).unwrap();
+    writeln!(s, "Nezha"); // TODO
+
+    /*
+    let ubgr = ccu::UART_BGR;
+    let c = CCU::new(p.UART0).unwrap();
+    // CCU init
+    // reset
+    // p.CCU.UART_BGR.modify();
+
+    // ccu::uart_bgr::W::uart0_rst
+    ccu::uart_bgr::.clear_bit(0);
+    for i in 1..100 {}
+    p.CCU.bgr.modify(CCU_UART_BGR::UART0_RST.val(1));
+    */
+
+    // gate
+    /*
+    p.CCU.bgr.modify(CCU_UART_BGR::UART0_GATING.val(0));
+    for i in 1..100 {}
+    p.CCU.bgr.modify(CCU_UART_BGR::UART0_GATING.val(1));
+    */
+
+    let uart = p.UART0;
+    loop {
+        uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
+        while !uart.usr.read().rfne().bit_is_set() {}
+    }
+    */
 }
 
 use core::ptr::{read_volatile, write_volatile};

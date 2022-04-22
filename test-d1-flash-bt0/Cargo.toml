@@ -8,3 +8,5 @@ edition = "2021"
 [dependencies]
 r0 = "1"
 # d1-pac = "0.0.17"
+d1-pac = "0.0.17"
+embedded-hal = "0.2.6"
