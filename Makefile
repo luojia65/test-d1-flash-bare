@@ -16,7 +16,7 @@ debug:
 	cargo build -p $(PACKAGE_NAME)
 
 release:
-	cargo build -p $(PACKAGE_NAME)--release
+	cargo build -p $(PACKAGE_NAME) --release
 
 objdump:
 	rust-objdump $(DEBUG_DIR)/$(PACKAGE_NAME) -d
