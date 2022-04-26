@@ -204,6 +204,7 @@ fn xtask_debug_gdb(gdb_path: &str, env: &Env) {
     command.current_dir(dist_dir(env));
     command.args(&["--eval-command", "file test-d1-flash-bt0"]);
     command.args(&["--eval-command", "set architecture riscv:rv64"]);
+    command.args(&["--eval-command", "mem 0x0 0xffff ro"]);
     command.arg("-q");
     ctrlc::set_handler(move || {
         // when ctrl-c, don't exit gdb
