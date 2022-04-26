@@ -1,3 +1,5 @@
+mod gdb_detect;
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use clap::{Parser, Subcommand};
 use std::env;
@@ -31,6 +33,11 @@ enum Commands {
         #[clap(flatten)]
         env: Env,
     },
+    /// Debug flash code using gdb
+    Gdb {
+        #[clap(flatten)]
+        env: Env,
+    },
 }
 
 #[derive(clap::Args)]
@@ -50,7 +57,7 @@ fn main() {
     match &args.command {
         Commands::Make { env } => {
             println!("xtask: make D1 flash binary");
-            let binutils_prefix = find_binutils_prefix();
+            let binutils_prefix = find_binutils_prefix_or_fail();
             xtask_build_d1_flash_bt0(env);
             xtask_binary_d1_flash_bt0(binutils_prefix, env);
             xtask_finialize_d1_flash_bt0(env);
@@ -59,7 +66,7 @@ fn main() {
             println!("xtask: build D1 binary and burn");
             let xfel = find_xfel();
             xfel_find_connected_device(xfel);
-            let binutils_prefix = find_binutils_prefix();
+            let binutils_prefix = find_binutils_prefix_or_fail();
             xtask_build_d1_flash_bt0(env);
             xtask_binary_d1_flash_bt0(binutils_prefix, env);
             xtask_finialize_d1_flash_bt0(env);
@@ -67,9 +74,21 @@ fn main() {
         }
         Commands::Asm { env } => {
             println!("xtask: build D1 flash ELF and view assembly");
-            let binutils_prefix = find_binutils_prefix();
+            let binutils_prefix = find_binutils_prefix_or_fail();
             xtask_build_d1_flash_bt0(env);
             xtask_dump_d1_flash_bt0(binutils_prefix, env);
+        }
+        Commands::Gdb { env } => {
+            println!("xtask: debug using gdb");
+            let gdb_path = if let Ok(ans) = gdb_detect::read_from_file() {
+                ans
+            } else {
+                let ans = gdb_detect::detect_gdb_path();
+                gdb_detect::save_to_file(&ans);
+                println!("xtask: saved GDB path");
+                ans
+            };
+            xtask_debug_gdb(&gdb_path, env);
         }
     }
 }
@@ -126,9 +145,8 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
             EGON_HEADER_LENGTH, total_length
         );
     }
-    let total_length = total_length as u32;
     file.seek(SeekFrom::Start(0x10)).unwrap();
-    file.write_u32::<LittleEndian>(total_length).unwrap(); // fixme: fixed endian
+    file.write_u32::<LittleEndian>(total_length as u32).unwrap();
     file.seek(SeekFrom::Start(0x0C)).unwrap();
     let stamp = file.read_u32::<LittleEndian>().unwrap();
     if stamp != 0x5F0A6C39 {
@@ -144,8 +162,19 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
         }
     }
     file.seek(SeekFrom::Start(0x0C)).unwrap();
-    file.write_u32::<LittleEndian>(checksum).unwrap(); // fixme: fixed endian
-                                                       // for C language developers: file is automatically closed when variable is out of scope
+    file.write_u32::<LittleEndian>(checksum).unwrap();
+    let new_len = align_up_to(total_length, 1024); // align up to 1KB
+    file.set_len(new_len).unwrap();
+    file.sync_all().unwrap(); // save file before automatic closing
+} // for C developers: files are automatically closed when they're out of scope
+
+fn align_up_to(len: u64, target_align: u64) -> u64 {
+    let (div, rem) = (len / target_align, len % target_align);
+    if rem != 0 {
+        (div + 1) * target_align
+    } else {
+        len
+    }
 }
 
 fn xtask_burn_d1_flash_bt0(xfel: &str, env: &Env) {
@@ -168,6 +197,23 @@ fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
         .arg("-d")
         .status()
         .unwrap();
+}
+
+fn xtask_debug_gdb(gdb_path: &str, env: &Env) {
+    let mut command = Command::new(gdb_path);
+    command.current_dir(dist_dir(env));
+    command.args(&["--eval-command", "file test-d1-flash-bt0"]);
+    command.args(&["--eval-command", "set architecture riscv:rv64"]);
+    command.arg("-q");
+    ctrlc::set_handler(move || {
+        // when ctrl-c, don't exit gdb
+    })
+    .expect("disable Ctrl-C exit");
+    let status = command.status().unwrap();
+    if !status.success() {
+        eprintln!("xtask: gdb failed with {}", status);
+        process::exit(1);
+    }
 }
 
 fn find_xfel() -> &'static str {
@@ -195,15 +241,22 @@ fn xfel_find_connected_device(xfel: &str) {
     println!("Found {}", String::from_utf8_lossy(&output.stdout).trim());
 }
 
-fn find_binutils_prefix() -> &'static str {
+fn find_binutils_prefix() -> Option<&'static str> {
     for prefix in ["rust-", "riscv64-unknown-elf-", "riscv64-linux-gnu-"] {
         let mut command = Command::new(format!("{}objcopy", prefix));
         command.arg("--version");
         command.stdout(Stdio::null());
         let status = command.status().unwrap();
         if status.success() {
-            return prefix;
+            return Some(prefix);
         }
+    }
+    None
+}
+
+fn find_binutils_prefix_or_fail() -> &'static str {
+    if let Some(ans) = find_binutils_prefix() {
+        return ans;
     }
     panic!(
         "error: no binutils found, try install using:
