@@ -80,15 +80,24 @@ fn main() {
         }
         Commands::Gdb { env } => {
             println!("xtask: debug using gdb");
-            let gdb_path = if let Ok(ans) = gdb_detect::read_from_file() {
+            xtask_build_d1_flash_bt0(env);
+            let gdb_path = if let Ok(ans) = gdb_detect::load_gdb_path_from_file() {
                 ans
             } else {
                 let ans = gdb_detect::detect_gdb_path();
-                gdb_detect::save_to_file(&ans);
+                gdb_detect::save_gdb_path_to_file(&ans);
                 println!("xtask: saved GDB path");
                 ans
             };
-            xtask_debug_gdb(&gdb_path, env);
+            let gdb_server = if let Ok(ans) = gdb_detect::load_gdb_server_from_file() {
+                ans
+            } else {
+                let ans = gdb_detect::detect_gdb_server(&gdb_path, env);
+                gdb_detect::save_gdb_server_to_file(&ans);
+                println!("xtask: saved GDB server");
+                ans
+            };
+            xtask_debug_gdb(&gdb_path, &gdb_server, env);
         }
     }
 }
@@ -199,12 +208,13 @@ fn xtask_dump_d1_flash_bt0(prefix: &str, env: &Env) {
         .unwrap();
 }
 
-fn xtask_debug_gdb(gdb_path: &str, env: &Env) {
+fn xtask_debug_gdb(gdb_path: &str, gdb_server: &str, env: &Env) {
     let mut command = Command::new(gdb_path);
     command.current_dir(dist_dir(env));
     command.args(&["--eval-command", "file test-d1-flash-bt0"]);
     command.args(&["--eval-command", "set architecture riscv:rv64"]);
     command.args(&["--eval-command", "mem 0x0 0xffff ro"]);
+    command.args(&["--eval-command", &format!("target remote {}", gdb_server)]);
     command.arg("-q");
     ctrlc::set_handler(move || {
         // when ctrl-c, don't exit gdb

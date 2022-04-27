@@ -41,7 +41,43 @@ pub fn detect_gdb_path() -> String {
     input.trim().to_string()
 }
 
-pub fn save_to_file(gdb_path: &str) {
+pub(crate) fn detect_gdb_server(gdb_path: &str, env: &super::Env) -> String {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let mut input = String::new();
+    println!("xtask: an address is needed to connect to GDB server.");
+    loop {
+        input.clear();
+        print!(
+            "Please input GDB remote address ([host]:port):
+> "
+        );
+        stdout.flush().unwrap();
+        stdin.read_line(&mut input).expect("read line");
+        println!("xtask: trying gdb connect...");
+        let mut command = Command::new(gdb_path);
+        command.current_dir(super::dist_dir(env));
+        command.args(&["--eval-command", "file test-d1-flash-bt0"]);
+        command.args(&["--eval-command", "set tcp connect-timeout 5"]);
+        command.args(&["--eval-command", &format!("target remote {}", input.trim())]);
+        command.arg("--batch-silent");
+        let status = match command.status() {
+            Ok(status) => status,
+            Err(e) => {
+                eprintln!("xtask: io error occurred when trying to connect: {}", e);
+                continue;
+            }
+        };
+        if status.success() {
+            break;
+        } else {
+            eprintln!("xtask: GDB connection error: {}", status);
+        }
+    }
+    input.trim().to_string()
+}
+
+pub fn save_gdb_path_to_file(gdb_path: &str) {
     fs::create_dir_all(project_root().join("target").join("xtask")).expect("create folder");
     let mut file = fs::OpenOptions::new()
         .read(true)
@@ -57,12 +93,37 @@ pub fn save_to_file(gdb_path: &str) {
     file.write(gdb_path.as_bytes()).expect("write file");
 }
 
-pub fn read_from_file() -> io::Result<String> {
+pub fn load_gdb_path_from_file() -> io::Result<String> {
     fs::read_to_string(
         project_root()
             .join("target")
             .join("xtask")
             .join("gdb-path.txt"),
+    )
+}
+
+pub fn save_gdb_server_to_file(gdb_server: &str) {
+    fs::create_dir_all(project_root().join("target").join("xtask")).expect("create folder");
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(
+            project_root()
+                .join("target")
+                .join("xtask")
+                .join("gdb-server.txt"),
+        )
+        .expect("create and open file");
+    file.write(gdb_server.as_bytes()).expect("write file");
+}
+
+pub fn load_gdb_server_from_file() -> io::Result<String> {
+    fs::read_to_string(
+        project_root()
+            .join("target")
+            .join("xtask")
+            .join("gdb-server.txt"),
     )
 }
 
