@@ -32,6 +32,22 @@ The D1 chip must be in FEL mode before running this command.
 
 _TODO: support NOR flash_
 
+## Debug Rust code
+
+You need to install any RISC-V bare metal GDB executables before continue.
+Either T-Head GDB or generic GDB is all supported.
+
+It's suggested to install T-Head's DebugServer for best comptability,
+OpenOCD support is work in progress.
+
+After prepared, the following command can help you debug Rust code on a D1 chip:
+
+```
+cargo gdb
+```
+
+You may use GDB commands on GDB command line to debug Rust code in this project.
+
 ## Dump assembly code
 
 Auto detect objdump command and print assembly code:

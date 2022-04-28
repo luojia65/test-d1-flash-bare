@@ -154,8 +154,10 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
             EGON_HEADER_LENGTH, total_length
         );
     }
+    let new_len = align_up_to(total_length, 16 * 1024); // align up to 16KB
+    file.set_len(new_len).unwrap();
     file.seek(SeekFrom::Start(0x10)).unwrap();
-    file.write_u32::<LittleEndian>(total_length as u32).unwrap();
+    file.write_u32::<LittleEndian>(new_len as u32).unwrap();
     file.seek(SeekFrom::Start(0x0C)).unwrap();
     let stamp = file.read_u32::<LittleEndian>().unwrap();
     if stamp != 0x5F0A6C39 {
@@ -172,8 +174,6 @@ fn xtask_finialize_d1_flash_bt0(env: &Env) {
     }
     file.seek(SeekFrom::Start(0x0C)).unwrap();
     file.write_u32::<LittleEndian>(checksum).unwrap();
-    let new_len = align_up_to(total_length, 1024); // align up to 1KB
-    file.set_len(new_len).unwrap();
     file.sync_all().unwrap(); // save file before automatic closing
 } // for C developers: files are automatically closed when they're out of scope
 
