@@ -60,7 +60,11 @@ Use `cargo asm --release` to dump under release build configuration.
 
 ## Notes
 
-1. Jump over header instuction
+1. Key code of binary generation
+
+Source: [xtask_finalize_d1_flash_bt0](https://github.com/luojia65/test-d1-flash-bare/blob/c3f67504965384a3f79e74aa7f587e9c5e17152d/xtask/src/main.rs#L143-L178)
+
+2. Jump over header instuction
 
 ```
 0000000000000000 <head_jump>:
