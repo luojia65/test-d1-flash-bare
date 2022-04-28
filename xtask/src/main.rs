@@ -214,6 +214,7 @@ fn xtask_debug_gdb(gdb_path: &str, gdb_server: &str, env: &Env) {
     command.args(&["--eval-command", "file test-d1-flash-bt0"]);
     command.args(&["--eval-command", "set architecture riscv:rv64"]);
     command.args(&["--eval-command", "mem 0x0 0xffff ro"]);
+    command.args(&["--eval-command", "mem 0x20000 0x27fff rw"]);
     command.args(&["--eval-command", &format!("target remote {}", gdb_server)]);
     command.arg("-q");
     ctrlc::set_handler(move || {
