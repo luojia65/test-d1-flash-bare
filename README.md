@@ -1,6 +1,6 @@
 # test-d1-flash-bare
 
-Project state: can't get serial output yet, working on image formats.
+Project state: can successfully build a workable flash binary image
 
 ## Build flash binary
 
