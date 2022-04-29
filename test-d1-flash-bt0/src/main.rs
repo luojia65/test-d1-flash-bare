@@ -1,13 +1,25 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
-mod hal;
+// mod hal;
 
-use crate::hal::{pac_encoding::UART0_BASE, Serial};
+// use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
 use core::panic::PanicInfo;
 use core::{fmt::Write, str};
 use d1_pac::{ccu, Peripherals};
+
+const CCU_BASE: usize = 0x0200_1000;
+const CCU_UART_BGR: usize = CCU_BASE + 0x090C;
+
+const APB0_CLK: usize = CCU_BASE + 0x0520; // 0x0200_1520
+const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
+
+const GPIO_BASE_ADDR: u32 = 0x02000000;
+const GPIO_PB_CFG1: u32 = GPIO_BASE_ADDR + 0x0034;
+const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
+const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
+const GPIO_PC_DAT: u32 = GPIO_BASE_ADDR + 0x0070;
 
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -104,7 +116,8 @@ pub unsafe extern "C" fn start() -> ! {
 
 extern "C" fn main() {
     init_bss();
-    configure_gpio_pf_port();
+    light_up_led();
+    // configure_gpio_pf_port();
     configure_uart_peripheral();
     configure_ccu_clocks();
     uart0_putchar(b'T');
@@ -171,6 +184,15 @@ extern "C" fn main() {
 
 use core::ptr::{read_volatile, write_volatile};
 
+fn light_up_led() {
+    let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
+    let mut val = pc_cfg0 | 0b0001 << 4;
+    unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
+    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DAT as *const u32) };
+    val = pc_dat0 | 0b1 << 1;
+    unsafe { write_volatile(GPIO_PC_DAT as *mut u32, val) };
+}
+
 fn configure_gpio_pf_port() {
     let pf_cfg0 = unsafe { read_volatile(0x0200_00f0 as *const u32) };
     // PF5 Select: R-JRAG-CK
@@ -182,16 +204,21 @@ fn configure_gpio_pf_port() {
 }
 
 fn configure_uart_peripheral() {
-    let pb_cfg1 = unsafe { read_volatile(0x0200_0034 as *const u32) };
+    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
     // PB1 Select: UART0-RX
     // PB0 Select: UART0-TX
     let new_value = (pb_cfg1 & 0xffffff00) | 0x66;
-    unsafe { write_volatile(0x0200_0034 as *mut u32, new_value) };
-    let ccu_uart_bgr = unsafe { read_volatile(0x0200_190c as *const u32) };
+    unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
+    // pull-ups
+    let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
+    val = val | 0x01 << 16 | 0x01 << 18;
+    unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
+
+    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
     // UART4_GATING: Pass
     // UART0_GATING: Pass
-    let new_value = ccu_uart_bgr | 0x10001;
-    unsafe { write_volatile(0x0200_190c as *mut u32, new_value) };
+    let new_value = ccu_uart_bgr | 0x1 | 0x1 << 16;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
     // Uart0 DivisorLatch LO: 0xD
     // Uart0 DivisorLatch HI: 0x0
     unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
@@ -240,7 +267,8 @@ fn configure_ccu_clocks() {
     // Clock source: PLL_PERI(1x)
     // Divide factor N: 2 (1 << _0x1_)
     // Divide factor M: 3 (_0x2_ + 1)
-    unsafe { write_volatile(0x0200_1520 as *mut u32, 0x0300_0102) };
+    unsafe { write_volatile(APB0_CLK as *mut u32, 0x0300_0102) };
+    unsafe { write_volatile(APB1_CLK as *mut u32, 0x0300_0102) };
     // RISC-V Clock
     // Clock source: PLL_CPU
     // Divide factor N: 2
