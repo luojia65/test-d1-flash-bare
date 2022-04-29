@@ -1,3 +1,4 @@
+use log::{error, info};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -7,7 +8,7 @@ pub fn detect_gdb_path() -> String {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut input = String::new();
-    println!("xtask: you need T-Head toolchain installed to debug this program.");
+    println!("you need T-Head toolchain installed to debug this program.");
     loop {
         input.clear();
         print!(
@@ -21,20 +22,20 @@ pub fn detect_gdb_path() -> String {
         let output = match command.output() {
             Ok(output) => output,
             Err(e) => {
-                eprintln!("xtask: io error occurred {}", e);
+                error!("io error occurred {}", e);
                 continue;
             }
         };
         let info = String::from_utf8_lossy(&output.stdout);
         if !info.starts_with("GNU gdb") {
-            eprintln!("xtask: not a GNU gdb program");
+            error!("not a GNU gdb program");
             continue;
         }
         if info.find("Xuantie-900 elf").is_some() {
-            println!("xtask: chosen Xuantie-900 ELF GDB program");
+            info!("chosen Xuantie-900 ELF GDB program");
             break;
         } else {
-            println!("xtask: chosen generic GDB program");
+            info!("chosen generic GDB program");
             break;
         }
     }
@@ -45,7 +46,7 @@ pub(crate) fn detect_gdb_server(gdb_path: &str, env: &super::Env) -> String {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut input = String::new();
-    println!("xtask: an address is needed to connect to GDB server.");
+    println!("an address is needed to connect to GDB server.");
     loop {
         input.clear();
         print!(
@@ -54,7 +55,7 @@ pub(crate) fn detect_gdb_server(gdb_path: &str, env: &super::Env) -> String {
         );
         stdout.flush().unwrap();
         stdin.read_line(&mut input).expect("read line");
-        println!("xtask: trying gdb connect...");
+        println!("trying gdb connect...");
         let mut command = Command::new(gdb_path);
         command.current_dir(super::dist_dir(env));
         command.args(&["--eval-command", "file test-d1-flash-bt0"]);
@@ -64,14 +65,14 @@ pub(crate) fn detect_gdb_server(gdb_path: &str, env: &super::Env) -> String {
         let status = match command.status() {
             Ok(status) => status,
             Err(e) => {
-                eprintln!("xtask: io error occurred when trying to connect: {}", e);
+                error!("io error occurred when trying to connect: {}", e);
                 continue;
             }
         };
         if status.success() {
             break;
         } else {
-            eprintln!("xtask: GDB connection error: {}", status);
+            error!("GDB connection error: {}", status);
         }
     }
     input.trim().to_string()

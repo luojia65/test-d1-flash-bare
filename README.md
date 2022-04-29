@@ -2,6 +2,9 @@
 
 Project state: can successfully build a workable flash binary image
 
+For all following commands: use `--release` to build in release mode, and `--verbose` to print
+more output to help debugging.
+
 ## Build flash binary
 
 Prerequisites: you need to install Rust and build target `riscv64imac-unknown-none-elf`.
@@ -21,16 +24,19 @@ however this won't affect target flash binary for those symbols will get strippe
 
 ## Build and burn into flash
 
-Use following command:
+Before burning into flash, make sure that you have correct flash type installed on board,
+otherwise this command line will fail.
 
-```
-cargo flash
+Use one of the following command according to boards:
+
+```sh
+cargo flash nand
+# or
+cargo flash nor
 ```
 
-It would do all `cargo make` functions, and burn it into NAND flash on a xfel connected board.
+It would do all `cargo make` functions, and burn it into NAND or NOR flash on a xfel connected board.
 The D1 chip must be in FEL mode before running this command.
-
-_TODO: support NOR flash_
 
 ## Debug Rust code
 
