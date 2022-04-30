@@ -30,6 +30,8 @@ const UART0_LCR: u32 = UART0_BASE + 0x000C;
 const UART0_MCR: u32 = UART0_BASE + 0x0010;
 const UART0_LSR: u32 = UART0_BASE + 0x0014;
 
+const UART_BAUD: u32 = 115200;
+
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 #[link_section = ".bss.uninit"]
@@ -224,6 +226,11 @@ fn configure_gpio_pf_port() {
     unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
 }
 
+const PARITY: u32 = 0;
+const STOP: u32 = 0;
+const DLEN: u32 = 3;
+const UART_SET: u32 = ((PARITY & 0x03) << 3) | ((STOP & 0x01) << 2) | (DLEN & 0x03);
+
 fn configure_uart_peripheral() {
     // PB1 Select: UART0-RX
     // PB0 Select: UART0-TX
@@ -257,10 +264,27 @@ fn configure_uart_peripheral() {
     // from xboot
     unsafe { write_volatile(UART0_MCR as *mut u32, 0x3) };
 
-    let mut lc = unsafe { read_volatile(UART0_LCR as *mut u32) };
-    lc = lc | 0x80;
-    unsafe { write_volatile(UART0_LCR as *mut u32, lc) };
+    let mut lcr = unsafe { read_volatile(UART0_LCR as *mut u32) };
+    lcr = lcr | 0x80;
+    unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
 
+    let uart_clk = (24000000 + 8 * UART_BAUD) / (16 * UART_BAUD);
+    let dlh = uart_clk >> 8;
+    unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
+    let dll = uart_clk & 0xff;
+    unsafe { write_volatile(UART0_DLH as *mut u32, dll) };
+
+    let mut lcr = unsafe { read_volatile(UART0_LCR as *mut u32) };
+    lcr = lcr & 0b01111111; // ~0x80
+    unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+
+    lcr = UART_SET;
+    unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+
+    let fcr = 0x7;
+    unsafe { write_volatile(UART0_FCR as *mut u32, fcr) };
+
+    /*
     // Uart0 DivisorLatch LO: 0xD
     // Uart0 DivisorLatch HI: 0x0
     // disable interrupts
@@ -294,6 +318,7 @@ fn configure_uart_peripheral() {
     // enable tx
     let tx = unsafe { read_volatile(UART0_THR as *mut u32) };
     unsafe { write_volatile(UART0_THR as *mut u32, tx | 0x0) };
+    */
 }
 
 fn configure_ccu_clocks() {
