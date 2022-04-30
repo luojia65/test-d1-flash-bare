@@ -19,6 +19,8 @@ const GPIO_BASE_ADDR: u32 = 0x0200_0000;
 const GPIO_PB_CFG0: u32 = GPIO_BASE_ADDR + 0x0030;
 const GPIO_PB_CFG1: u32 = GPIO_BASE_ADDR + 0x0034;
 const GPIO_PB_DATA: u32 = GPIO_BASE_ADDR + 0x0040;
+const GPIO_PB_DRV0: u32 = GPIO_BASE_ADDR + 0x0044;
+const GPIO_PB_DRV1: u32 = GPIO_BASE_ADDR + 0x0048;
 const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
 const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
 const GPIO_PC_DATA: u32 = GPIO_BASE_ADDR + 0x0070;
@@ -133,8 +135,18 @@ extern "C" fn main() {
     init_bss();
     light_up_led();
     configure_gpio_pf_port();
-    configure_ccu_clocks();
     configure_uart_peripheral();
+    configure_ccu_clocks();
+    uart0_putchar_ore(b'O');
+    uart0_putchar_ore(b'R');
+    uart0_putchar_ore(b'E');
+    uart0_putchar_ore(b'B');
+    uart0_putchar_ore(b'O');
+    uart0_putchar_ore(b'O');
+    uart0_putchar_ore(b'T');
+    uart0_putchar_ore(b'\r');
+    uart0_putchar_ore(b'\n');
+
     uart0_putchar(b'T');
     uart0_putchar(b'e');
     uart0_putchar(b's');
@@ -247,7 +259,8 @@ fn configure_uart_like_xboot() {
     let dlh = uart_clk >> 8;
     unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
     let dll = uart_clk & 0xff;
-    unsafe { write_volatile(UART0_DLH as *mut u32, dll) };
+    // THR is also RBR and DLL
+    unsafe { write_volatile(UART0_THR as *mut u32, dll) };
 
     let mut lcr = unsafe { read_volatile(UART0_LCR as *mut u32) };
     lcr = lcr & 0b01111111; // ~0x80
@@ -260,42 +273,10 @@ fn configure_uart_like_xboot() {
     unsafe { write_volatile(UART0_FCR as *mut u32, fcr) };
 }
 
-fn configure_uart_peripheral() {
-    // PB1 Select: UART0-RX
-    // PB0 Select: UART0-TX
-    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
-    let new_value = (pb_cfg1 & 0xffffff00) | 0x66;
-    unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
-
-    // pull-ups
-    let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
-    val = val | 0x01 << 16 | 0x01 << 18;
-    unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
-
-    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
-    // UART4_GATING: Pass
-    // UART0_GATING: Pass
-    /* UART bus gating reset */
-
-    // reset
-    let mut new_value = ccu_uart_bgr | 0x0 << 16;
-    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
-    for _ in 1..100 {}
-    new_value = ccu_uart_bgr | 0x1 << 16;
-    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
-    // gating
-    new_value = ccu_uart_bgr | 0x0;
-    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
-    for _ in 1..100 {}
-    new_value = ccu_uart_bgr | 0x1;
-    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
-
-    configure_uart_like_xboot();
-
-    // Uart0 DivisorLatch LO: 0xD
-    // Uart0 DivisorLatch HI: 0x0
+fn configure_uart_like_oreboot() {
     // disable interrupts
     unsafe { write_volatile(UART0_DLH as *mut u32, 0) };
+
     // Uart0 FifoControl
     // RCVR Trigger: FIFO-2 less than full
     // TX Empty Trigger: FIFO 1/2 Full
@@ -327,6 +308,45 @@ fn configure_uart_peripheral() {
     unsafe { write_volatile(UART0_THR as *mut u32, tx | 0x0) };
 }
 
+fn configure_uart_peripheral() {
+    // PB1 Select: UART0-RX
+    // PB0 Select: UART0-TX
+    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
+    let new_value = (pb_cfg1 & 0xffffff00) | 0b0110 | 0b0110 << 4;
+    unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
+
+    // pull-ups
+    let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
+    val = val | 1 << 16 | 1 << 18;
+    unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
+
+    // PB8 + PB9 drive level 3
+    unsafe { write_volatile(GPIO_PB_DRV1 as *mut u32, 0x0001_1133) };
+
+    // UART4_GATING: Pass
+    // UART0_GATING: Pass
+    /* UART bus gating reset */
+    // reset
+    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
+    let mut new_value = ccu_uart_bgr & 0b1111_1111_1111_1110_1111_1111_1111_1111;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    for _ in 1..100 {}
+    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
+    new_value = ccu_uart_bgr | 1 << 16;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    // gating
+    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
+    let mut new_value = ccu_uart_bgr & 0b1111_1111_1111_1111_1111_1111_1111_1110;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    for _ in 1..100 {}
+    let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
+    new_value = ccu_uart_bgr | 0x1;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+
+    configure_uart_like_xboot();
+    // configure_uart_like_oreboot();
+}
+
 fn configure_ccu_clocks() {
     let pll_cpu_ctrl = unsafe { read_volatile(0x0200_1000 as *const u32) };
     // 11010111 11111100 00000000 11111100
@@ -355,22 +375,27 @@ fn configure_ccu_clocks() {
     unsafe { write_volatile(0x0200_1d00 as *mut u32, 0x0500_0100) };
 }
 
-fn uart0_putchar(a: u8) {
+fn uart0_putchar_ore(a: u8) {
     loop {
         let uart0_lsr = unsafe { read_volatile(UART0_LSR as *const u32) };
         if uart0_lsr & (1 << 6) != 0 {
             break;
         }
-        /*
+    }
+    // write to uart transmitting holding register
+    unsafe { write_volatile(UART0_THR as *mut u32, a as u32) };
+}
+
+fn uart0_putchar(a: u8) {
+    loop {
         let uart0_status = unsafe { read_volatile(0x0250_007C as *const u32) };
         if uart0_status & 0x2 != 0 {
             // TX FIFO is empty
             break;
         }
-        */
     }
     // write to uart transmitting holding register
-    unsafe { write_volatile(UART0_BASE as *mut u32, a as u32) };
+    unsafe { write_volatile(UART0_THR as *mut u32, a as u32) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
