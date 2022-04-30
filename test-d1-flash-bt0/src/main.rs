@@ -147,26 +147,20 @@ extern "C" fn main() {
     uart0_putchar_ore(b'\r');
     uart0_putchar_ore(b'\n');
 
-    //   uart0_putchar(b'T');
-    //   uart0_putchar(b'e');
-    //   uart0_putchar(b's');
-    //   uart0_putchar(b't');
-    //   uart0_putchar(b'\r');
-    //   uart0_putchar(b'\n');
+    uart0_putchar(b'T');
+    uart0_putchar(b'e');
+    uart0_putchar(b's');
+    uart0_putchar(b't');
+    uart0_putchar(b'\r');
+    uart0_putchar(b'\n');
     loop {
-        //       uart0_putchar(b'R');
-        //       uart0_putchar(b'u');
-        //       uart0_putchar(b's');
-        //       uart0_putchar(b't');
-        //       uart0_putchar(b'\r');
-        //       uart0_putchar(b'\n');
-        uart0_putchar_ore(b'B');
-        uart0_putchar_ore(b'\r');
-        uart0_putchar_ore(b'\n');
-        for _ in 0..50000000 {
-            // delay
-            unsafe { asm!("nop") };
-        }
+        uart0_putchar(b'R');
+        uart0_putchar(b'u');
+        uart0_putchar(b's');
+        uart0_putchar(b't');
+        uart0_putchar(b'\r');
+        uart0_putchar(b'\n');
+        for _ in 0..100000 {}
     }
 
     // let p = d1_pac::Peripherals::take().unwrap();
