@@ -18,9 +18,10 @@ const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
 const GPIO_BASE_ADDR: u32 = 0x0200_0000;
 const GPIO_PB_CFG0: u32 = GPIO_BASE_ADDR + 0x0030;
 const GPIO_PB_CFG1: u32 = GPIO_BASE_ADDR + 0x0034;
+const GPIO_PB_DATA: u32 = GPIO_BASE_ADDR + 0x0040;
 const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
 const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
-const GPIO_PC_DAT: u32 = GPIO_BASE_ADDR + 0x0070;
+const GPIO_PC_DATA: u32 = GPIO_BASE_ADDR + 0x0070;
 
 const UART0_BASE: u32 = 0x0250_0000;
 const UART0_THR: u32 = UART0_BASE;
@@ -205,15 +206,18 @@ fn light_up_led() {
     let mut val = pc_cfg0 | 0b0001 << 4;
     unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
     // Set pin to HIGH
-    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DAT as *const u32) };
+    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
     val = pc_dat0 | 0b1 << 1;
-    unsafe { write_volatile(GPIO_PC_DAT as *mut u32, val) };
+    unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
 
     // GPIO port B pin 5 (available on Nezha)
     let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
     let new_value = (pb_cfg0 & 0xff0fffff) | 0b0001 << 20;
     unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, new_value) };
-    // TODO: set high
+    // Set pin to HIGH
+    let pc_dat0 = unsafe { read_volatile(GPIO_PB_DATA as *const u32) };
+    val = pc_dat0 | 0b1 << 5;
+    unsafe { write_volatile(GPIO_PB_DATA as *mut u32, val) };
 }
 
 fn configure_gpio_pf_port() {
