@@ -15,7 +15,8 @@ const CCU_UART_BGR: usize = CCU_BASE + 0x090C;
 const APB0_CLK: usize = CCU_BASE + 0x0520; // 0x0200_1520
 const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
 
-const GPIO_BASE_ADDR: u32 = 0x02000000;
+const GPIO_BASE_ADDR: u32 = 0x0200_0000;
+const GPIO_PB_CFG0: u32 = GPIO_BASE_ADDR + 0x0030;
 const GPIO_PB_CFG1: u32 = GPIO_BASE_ADDR + 0x0034;
 const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
 const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
@@ -215,11 +216,16 @@ fn configure_gpio_pf_port() {
 }
 
 fn configure_uart_peripheral() {
-    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
+    let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
+    let new_value = (pb_cfg0 & 0xff0fffff) | 0b0001 << 20;
+    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, new_value) };
+
     // PB1 Select: UART0-RX
     // PB0 Select: UART0-TX
+    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
     let new_value = (pb_cfg1 & 0xffffff00) | 0x66;
     unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
+
     // pull-ups
     let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
     val = val | 0x01 << 16 | 0x01 << 18;
