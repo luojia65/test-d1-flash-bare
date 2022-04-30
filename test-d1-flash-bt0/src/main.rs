@@ -197,12 +197,21 @@ extern "C" fn main() {
 use core::ptr::{read_volatile, write_volatile};
 
 fn light_up_led() {
+    // GPIO port C pin 1 (LED on Lichee RV module)
+    // Change into output mode
     let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
     let mut val = pc_cfg0 | 0b0001 << 4;
     unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
+    // Set pin to HIGH
     let pc_dat0 = unsafe { read_volatile(GPIO_PC_DAT as *const u32) };
     val = pc_dat0 | 0b1 << 1;
     unsafe { write_volatile(GPIO_PC_DAT as *mut u32, val) };
+
+    // GPIO port B pin 5 (available on Nezha)
+    let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
+    let new_value = (pb_cfg0 & 0xff0fffff) | 0b0001 << 20;
+    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, new_value) };
+    // TODO: set high
 }
 
 fn configure_gpio_pf_port() {
@@ -216,10 +225,6 @@ fn configure_gpio_pf_port() {
 }
 
 fn configure_uart_peripheral() {
-    let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
-    let new_value = (pb_cfg0 & 0xff0fffff) | 0b0001 << 20;
-    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, new_value) };
-
     // PB1 Select: UART0-RX
     // PB0 Select: UART0-TX
     let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
