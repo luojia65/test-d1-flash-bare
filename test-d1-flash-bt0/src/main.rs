@@ -234,7 +234,7 @@ fn configure_uart_peripheral() {
 
     // Uart0 DivisorLatch LO: 0xD
     // Uart0 DivisorLatch HI: 0x0
-    unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
+    // disable interrupts
     unsafe { write_volatile(0x0250_0004 as *mut u32, 0) };
     // Uart0 FifoControl
     // RCVR Trigger: FIFO-2 less than full
@@ -244,6 +244,7 @@ fn configure_uart_peripheral() {
     // RCVR FIFO Reset: 1
     // Fifo Enable: 1
     unsafe { write_volatile(0x0250_0008 as *mut u32, 0xF7) };
+    unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
     let uart0_line_control = unsafe { read_volatile(0x0250_000c as *const u32) };
     // Uart0 Line control
     // Divisor latch access, break control: unmodified
