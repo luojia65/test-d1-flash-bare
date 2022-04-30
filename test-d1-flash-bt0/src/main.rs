@@ -158,6 +158,11 @@ extern "C" fn main() {
         uart0_putchar(b'u');
         uart0_putchar(b's');
         uart0_putchar(b't');
+        uart0_putchar(b' ');
+        uart0_putchar(0xF0);
+        uart0_putchar(0x9F);
+        uart0_putchar(0xA6);
+        uart0_putchar(0x80);
         uart0_putchar(b'\r');
         uart0_putchar(b'\n');
         for _ in 0..100000 {}
