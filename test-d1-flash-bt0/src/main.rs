@@ -147,19 +147,22 @@ extern "C" fn main() {
     uart0_putchar_ore(b'\r');
     uart0_putchar_ore(b'\n');
 
-    uart0_putchar(b'T');
-    uart0_putchar(b'e');
-    uart0_putchar(b's');
-    uart0_putchar(b't');
-    uart0_putchar(b'\r');
-    uart0_putchar(b'\n');
+    //   uart0_putchar(b'T');
+    //   uart0_putchar(b'e');
+    //   uart0_putchar(b's');
+    //   uart0_putchar(b't');
+    //   uart0_putchar(b'\r');
+    //   uart0_putchar(b'\n');
     loop {
-        uart0_putchar(b'R');
-        uart0_putchar(b'u');
-        uart0_putchar(b's');
-        uart0_putchar(b't');
-        uart0_putchar(b'\r');
-        uart0_putchar(b'\n');
+        //       uart0_putchar(b'R');
+        //       uart0_putchar(b'u');
+        //       uart0_putchar(b's');
+        //       uart0_putchar(b't');
+        //       uart0_putchar(b'\r');
+        //       uart0_putchar(b'\n');
+        uart0_putchar_ore(b'B');
+        uart0_putchar_ore(b'\r');
+        uart0_putchar_ore(b'\n');
         for _ in 0..50000000 {
             // delay
             unsafe { asm!("nop") };
@@ -248,9 +251,36 @@ const DLEN: u32 = 3;
 const UART_SET: u32 = ((PARITY & 0x03) << 3) | ((STOP & 0x01) << 2) | (DLEN & 0x03);
 
 fn configure_uart_like_xboot() {
+    // disable interrupts
+    let mut dlh = unsafe { read_volatile(UART0_DLH as *const u32) };
+    dlh = dlh & 0b1111_1101;
+    unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
+    // enable FIFO
+    let mut fcr = unsafe { read_volatile(UART0_FCR as *const u32) };
+    fcr = fcr | 1;
+    unsafe { write_volatile(UART0_FCR as *mut u32, fcr) };
+
     // from xboot
     unsafe { write_volatile(UART0_MCR as *mut u32, 0x3) };
 
+    //   // DLAB
+    //   let mut lcr = unsafe { read_volatile(UART0_LCR as *const u32) };
+    //   // lcr = lcr | 1 << 7;
+    //   lcr = lcr | 0x80;
+    //   unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+    //   // config clock rate, etc
+    //   let mut dlh = unsafe { read_volatile(UART0_DLH as *mut u32) };
+    //   dlh = dlh & 0xffffff00;
+    //   unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
+    //   let mut dll = unsafe { read_volatile(UART0_THR as *mut u32) };
+    //   dll = dll & 0xffffff00 | 13;
+    //   unsafe { write_volatile(UART0_THR as *mut u32, dll) };
+    //   // DLAB
+    //   let mut lcr = unsafe { read_volatile(UART0_LCR as *const u32) };
+    //   lcr = lcr & 0x0111_1111;
+    //   unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+
+    /*  ---------  */
     let mut lcr = unsafe { read_volatile(UART0_LCR as *mut u32) };
     lcr = lcr | 0x80;
     unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
@@ -268,44 +298,51 @@ fn configure_uart_like_xboot() {
 
     lcr = UART_SET;
     unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+    /*  ---------  */
 
-    let fcr = 0x7;
-    unsafe { write_volatile(UART0_FCR as *mut u32, fcr) };
+    // unsafe { write_volatile(UART0_FCR as *mut u32, 1) };
 }
 
 fn configure_uart_like_oreboot() {
+    // asd
+    // unsafe { write_volatile(UART0_MCR as *mut u32, 3) };
+
     // disable interrupts
-    unsafe { write_volatile(UART0_DLH as *mut u32, 0) };
+    let mut dlh = unsafe { read_volatile(UART0_DLH as *const u32) };
+    dlh = dlh & 0b1111_1101;
+    unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
+    // enable FIFO
+    let mut fcr = unsafe { read_volatile(UART0_FCR as *const u32) };
+    fcr = fcr | 1;
+    unsafe { write_volatile(UART0_FCR as *mut u32, fcr) };
 
-    // Uart0 FifoControl
-    // RCVR Trigger: FIFO-2 less than full
-    // TX Empty Trigger: FIFO 1/2 Full
-    // DMA Mode: Mode 0
-    // XMIT FIFO Reset: 1
-    // RCVR FIFO Reset: 1
-    // Fifo Enable: 1
-    unsafe { write_volatile(UART0_FCR as *mut u32, 0xF7) };
-    unsafe { write_volatile(UART0_THR as *mut u32, 0xD) };
+    // disable tx
+    let tx = unsafe { read_volatile(UART0_THR as *mut u32) };
+    unsafe { write_volatile(UART0_THR as *mut u32, tx | 1) };
 
-    // Uart0 Line control
-    // Divisor latch access, break control: unmodified
-    // Parity: disabled
-    // Stop bit: 1 bit
-    // Data length: 8 bits
-    let uart0_line_control = unsafe { read_volatile(UART0_LCR as *const u32) };
-    let new_value = (uart0_line_control & 0xffffff60) | 3;
-    unsafe { write_volatile(UART0_LCR as *mut u32, new_value) };
-    // Uart0 modem control
-    // Uart function: UART mode
-    // Auto flow control: disabled
-    // Loop back or normal mode: normal mode
-    // RTS value: 0
-    // DTR value: 0
-    unsafe { write_volatile(UART0_MCR as *mut u32, 0) };
+    // DLAB
+    let mut lcr = unsafe { read_volatile(UART0_LCR as *const u32) };
+    // lcr = lcr | 1 << 7;
+    lcr = lcr | 0x80;
+    unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
+    // config clock rate, etc
+    let mut dlh = unsafe { read_volatile(UART0_DLH as *mut u32) };
+    dlh = dlh & 0xffffff00;
+    unsafe { write_volatile(UART0_DLH as *mut u32, dlh) };
+    let mut dll = unsafe { read_volatile(UART0_THR as *mut u32) };
+    dll = dll & 0xffffff00 | 13;
+    unsafe { write_volatile(UART0_THR as *mut u32, dll) };
+    // DLAB
+    let mut lcr = unsafe { read_volatile(UART0_LCR as *const u32) };
+    lcr = lcr & 0x0111_1111;
+    unsafe { write_volatile(UART0_LCR as *mut u32, lcr) };
 
     // enable tx
-    let tx = unsafe { read_volatile(UART0_THR as *mut u32) };
-    unsafe { write_volatile(UART0_THR as *mut u32, tx | 0x0) };
+    let mut tx = unsafe { read_volatile(UART0_THR as *mut u32) };
+    tx = tx & 0xfffffffe;
+    unsafe { write_volatile(UART0_THR as *mut u32, tx) };
+
+    unsafe { write_volatile(UART0_FCR as *mut u32, 0b0111) };
 }
 
 fn configure_uart_peripheral() {
@@ -367,7 +404,7 @@ fn configure_ccu_clocks() {
     // Divide factor N: 2 (1 << _0x1_)
     // Divide factor M: 3 (_0x2_ + 1)
     unsafe { write_volatile(APB0_CLK as *mut u32, 0x0300_0102) };
-    unsafe { write_volatile(APB1_CLK as *mut u32, 0x0300_0102) };
+    // unsafe { write_volatile(APB1_CLK as *mut u32, 0x0300_0102) };
     // RISC-V Clock
     // Clock source: PLL_CPU
     // Divide factor N: 2
@@ -379,6 +416,7 @@ fn uart0_putchar_ore(a: u8) {
     loop {
         let uart0_lsr = unsafe { read_volatile(UART0_LSR as *const u32) };
         if uart0_lsr & (1 << 6) != 0 {
+            // TX FIFO is empty
             break;
         }
     }
