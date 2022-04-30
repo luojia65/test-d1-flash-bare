@@ -21,6 +21,14 @@ const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
 const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
 const GPIO_PC_DAT: u32 = GPIO_BASE_ADDR + 0x0070;
 
+const UART0_BASE: u32 = 0x0250_0000;
+const UART0_THR: u32 = UART0_BASE;
+const UART0_DLH: u32 = UART0_BASE + 0x0004;
+const UART0_FCR: u32 = UART0_BASE + 0x0008;
+const UART0_LCR: u32 = UART0_BASE + 0x000C;
+const UART0_MCR: u32 = UART0_BASE + 0x0010;
+const UART0_LSR: u32 = UART0_BASE + 0x0014;
+
 const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 #[link_section = ".bss.uninit"]
@@ -78,6 +86,9 @@ pub static HEAD_DATA: HeadData = HeadData {
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
     asm!(
+        "csrw   mie, zero",
+        "li     t2, 0x30013",
+        "csrs   0x7c2, t2", // MCOR
         "la     sp, {stack}",
         "li     t0, {per_hart_stack_size}",
         "add    sp, sp, t0",
@@ -118,8 +129,8 @@ extern "C" fn main() {
     init_bss();
     light_up_led();
     // configure_gpio_pf_port();
-    configure_uart_peripheral();
     configure_ccu_clocks();
+    configure_uart_peripheral();
     uart0_putchar(b'T');
     uart0_putchar(b'e');
     uart0_putchar(b's');
@@ -232,10 +243,17 @@ fn configure_uart_peripheral() {
     new_value = ccu_uart_bgr | 0x1;
     unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
 
+    // from xboot
+    unsafe { write_volatile(UART0_MCR as *mut u32, 0x3) };
+
+    let mut lc = unsafe { read_volatile(UART0_LCR as *mut u32) };
+    lc = lc | 0x80;
+    unsafe { write_volatile(UART0_LCR as *mut u32, lc) };
+
     // Uart0 DivisorLatch LO: 0xD
     // Uart0 DivisorLatch HI: 0x0
     // disable interrupts
-    unsafe { write_volatile(0x0250_0004 as *mut u32, 0) };
+    unsafe { write_volatile(UART0_DLH as *mut u32, 0) };
     // Uart0 FifoControl
     // RCVR Trigger: FIFO-2 less than full
     // TX Empty Trigger: FIFO 1/2 Full
@@ -243,23 +261,28 @@ fn configure_uart_peripheral() {
     // XMIT FIFO Reset: 1
     // RCVR FIFO Reset: 1
     // Fifo Enable: 1
-    unsafe { write_volatile(0x0250_0008 as *mut u32, 0xF7) };
-    unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
-    let uart0_line_control = unsafe { read_volatile(0x0250_000c as *const u32) };
+    unsafe { write_volatile(UART0_FCR as *mut u32, 0xF7) };
+    unsafe { write_volatile(UART0_THR as *mut u32, 0xD) };
+
     // Uart0 Line control
     // Divisor latch access, break control: unmodified
     // Parity: disabled
     // Stop bit: 1 bit
     // Data length: 8 bits
+    let uart0_line_control = unsafe { read_volatile(UART0_LCR as *const u32) };
     let new_value = (uart0_line_control & 0xffffff60) | 3;
-    unsafe { write_volatile(0x0250_000c as *mut u32, new_value) };
+    unsafe { write_volatile(UART0_LCR as *mut u32, new_value) };
     // Uart0 modem control
     // Uart function: UART mode
     // Auto flow control: disabled
     // Loop back or normal mode: normal mode
     // RTS value: 0
     // DTR value: 0
-    unsafe { write_volatile(0x0250_0010 as *mut u32, 0) };
+    unsafe { write_volatile(UART0_MCR as *mut u32, 0) };
+
+    // enable tx
+    let tx = unsafe { read_volatile(UART0_THR as *mut u32) };
+    unsafe { write_volatile(UART0_THR as *mut u32, tx | 0x0) };
 }
 
 fn configure_ccu_clocks() {
@@ -292,14 +315,20 @@ fn configure_ccu_clocks() {
 
 fn uart0_putchar(a: u8) {
     loop {
+        let uart0_lsr = unsafe { read_volatile(UART0_LSR as *const u32) };
+        if uart0_lsr & (1 << 6) != 0 {
+            break;
+        }
+        /*
         let uart0_status = unsafe { read_volatile(0x0250_007C as *const u32) };
         if uart0_status & 0x2 != 0 {
             // TX FIFO is empty
             break;
         }
+        */
     }
     // write to uart transmitting holding register
-    unsafe { write_volatile(0x0250_0000 as *mut u32, a as u32) };
+    unsafe { write_volatile(UART0_BASE as *mut u32, a as u32) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
