@@ -132,7 +132,7 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() {
     init_bss();
     light_up_led();
-    // configure_gpio_pf_port();
+    configure_gpio_pf_port();
     configure_ccu_clocks();
     configure_uart_peripheral();
     uart0_putchar(b'T');
@@ -203,7 +203,7 @@ fn light_up_led() {
     // GPIO port C pin 1 (LED on Lichee RV module)
     // Change into output mode
     let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
-    let mut val = pc_cfg0 | 0b0001 << 4;
+    let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
     unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
     // Set pin to HIGH
     let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
@@ -212,8 +212,8 @@ fn light_up_led() {
 
     // GPIO port B pin 5 (available on Nezha)
     let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
-    let new_value = (pb_cfg0 & 0xff0fffff) | 0b0001 << 20;
-    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, new_value) };
+    let mut val = pb_cfg0 & 0xff0fffff | 0b0001 << 20;
+    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, val) };
     // Set pin to HIGH
     let pc_dat0 = unsafe { read_volatile(GPIO_PB_DATA as *const u32) };
     val = pc_dat0 | 0b1 << 5;
