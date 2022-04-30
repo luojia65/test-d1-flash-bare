@@ -217,8 +217,21 @@ fn configure_uart_peripheral() {
     let ccu_uart_bgr = unsafe { read_volatile(CCU_UART_BGR as *const u32) };
     // UART4_GATING: Pass
     // UART0_GATING: Pass
-    let new_value = ccu_uart_bgr | 0x1 | 0x1 << 16;
+    /* UART bus gating reset */
+
+    // reset
+    let mut new_value = ccu_uart_bgr | 0x0 << 16;
     unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    for _ in 1..100 {}
+    new_value = ccu_uart_bgr | 0x1 << 16;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    // gating
+    new_value = ccu_uart_bgr | 0x0;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+    for _ in 1..100 {}
+    new_value = ccu_uart_bgr | 0x1;
+    unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
+
     // Uart0 DivisorLatch LO: 0xD
     // Uart0 DivisorLatch HI: 0x0
     unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
