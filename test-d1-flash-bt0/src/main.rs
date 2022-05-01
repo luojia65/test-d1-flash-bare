@@ -1,10 +1,36 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![no_std]
 #![no_main]
+// mod hal;
+#[macro_use]
+mod ccu;
+mod log;
+mod time;
+mod uart;
+use crate::ccu::Clocks;
+use crate::time::U32Ext;
+
+// use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
 use core::panic::PanicInfo;
+use d1_pac::Peripherals;
 
-const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
+const CCU_BASE: usize = 0x0200_1000;
+
+const APB0_CLK: usize = CCU_BASE + 0x0520; // 0x0200_1520
+const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
+
+const GPIO_BASE_ADDR: u32 = 0x0200_0000;
+const GPIO_PB_CFG0: u32 = GPIO_BASE_ADDR + 0x0030;
+const GPIO_PB_CFG1: u32 = GPIO_BASE_ADDR + 0x0034;
+const GPIO_PB_DATA: u32 = GPIO_BASE_ADDR + 0x0040;
+const GPIO_PB_DRV0: u32 = GPIO_BASE_ADDR + 0x0044;
+const GPIO_PB_DRV1: u32 = GPIO_BASE_ADDR + 0x0048;
+const GPIO_PB_PULL: u32 = GPIO_BASE_ADDR + 0x0054;
+const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
+const GPIO_PC_DATA: u32 = GPIO_BASE_ADDR + 0x0070;
+
+const PER_HART_STACK_SIZE: usize = 4 * 1024; // 4KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 #[link_section = ".bss.uninit"]
 static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
@@ -61,6 +87,9 @@ pub static HEAD_DATA: HeadData = HeadData {
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
     asm!(
+        "csrw   mie, zero",
+        "li     t2, 0x30013",
+        "csrs   0x7c2, t2", // MCOR
         "la     sp, {stack}",
         "li     t0, {per_hart_stack_size}",
         "add    sp, sp, t0",
@@ -72,64 +101,56 @@ pub unsafe extern "C" fn start() -> ! {
         main = sym main,
         options(noreturn)
     )
-    // asm!(
-    //     // open uart clock gate and reset gate
-    //     "li     t0, 0x0200190C",
-    //     "li     t1, (1 << 0) | (1 << 16)",
-    //     "sw     t1, 0(t0)",
-    //     // set gpio B8,B9 to uart0, B9 drive level 3
-    //     "li     t0, 0x02000000",
-    //     "lw     t1, 0x34(t0)",
-    //     "ori    t1, t1, 0b01100110",
-    //     "sw     t1, 0x34(t0)",
-    //     "lw     t1, 0x48(t0)",
-    //     "ori    t1, t1, 0b00110000",
-    //     "sw     t1, 0x48(t0)",
-    //     // write one char to uart
-    //     "li     t0, 0x02500000",
-    //     "li     t1, 82", // R
-    //     "1:",
-    //     "sb     t1, 0(t0)",
-    //     "j      1b", // todo: remove when there's uart output
-    //     "j      {}",
-    //     sym main,
-    //     options(noreturn)
-    // )
 }
 
 extern "C" fn main() {
     init_bss();
-    configure_gpio_pf_port();
-    configure_uart_peripheral();
+    light_up_led();
     configure_ccu_clocks();
-    uart0_putchar(b'T');
-    uart0_putchar(b'e');
-    uart0_putchar(b's');
-    uart0_putchar(b't');
-    uart0_putchar(b'\r');
-    uart0_putchar(b'\n');
+    configure_gpio_pf_port();
+    configure_gpio_uart_peripheral();
+    use uart::{Config, Parity, Serial, StopBits, WordLength};
+    let p = Peripherals::take().unwrap();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
+    let config = Config {
+        baudrate: 115200.bps(),
+        wordlength: WordLength::Eight,
+        parity: Parity::None,
+        stopbits: StopBits::One,
+    };
+    let serial = Serial::new(p.UART0, config, &clocks);
+    println!("OREBOOT");
+    println!("Test");
     loop {
-        uart0_putchar(b'R');
-        uart0_putchar(b'u');
-        uart0_putchar(b's');
-        uart0_putchar(b't');
-        uart0_putchar(b'\r');
-        uart0_putchar(b'\n');
-        for _ in 0..50000000 {
-            // delay
-            unsafe { asm!("nop") };
-        }
+        println!("Rust🦀");
+        for _ in 0..100000 {}
     }
-
-    // let p = d1_pac::Peripherals::take().unwrap();
-    // let uart = p.UART0;
-    // loop {
-    //     uart.thr().write(|w| unsafe { w.thr().bits(b'R') });
-    //     while !uart.usr.read().rfne().bit_is_set() {}
-    // }
 }
 
 use core::ptr::{read_volatile, write_volatile};
+
+fn light_up_led() {
+    // GPIO port C pin 1 (LED on Lichee RV module)
+    // Change into output mode
+    let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
+    let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
+    unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
+    // Set pin to HIGH
+    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
+    val = pc_dat0 | 0b1 << 1;
+    unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
+
+    // GPIO port B pin 5 (available on Nezha)
+    let pb_cfg0 = unsafe { read_volatile(GPIO_PB_CFG0 as *const u32) };
+    let mut val = pb_cfg0 & 0xff0fffff | 0b0001 << 20;
+    unsafe { write_volatile(GPIO_PB_CFG0 as *mut u32, val) };
+    // Set pin to HIGH
+    let pc_dat0 = unsafe { read_volatile(GPIO_PB_DATA as *const u32) };
+    val = pc_dat0 | 0b1 << 5;
+    unsafe { write_volatile(GPIO_PB_DATA as *mut u32, val) };
+}
 
 fn configure_gpio_pf_port() {
     let pf_cfg0 = unsafe { read_volatile(0x0200_00f0 as *const u32) };
@@ -141,44 +162,20 @@ fn configure_gpio_pf_port() {
     unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
 }
 
-fn configure_uart_peripheral() {
-    let pb_cfg1 = unsafe { read_volatile(0x0200_0034 as *const u32) };
+fn configure_gpio_uart_peripheral() {
     // PB1 Select: UART0-RX
     // PB0 Select: UART0-TX
-    let new_value = (pb_cfg1 & 0xffffff00) | 0x66;
-    unsafe { write_volatile(0x0200_0034 as *mut u32, new_value) };
-    let ccu_uart_bgr = unsafe { read_volatile(0x0200_190c as *const u32) };
-    // UART4_GATING: Pass
-    // UART0_GATING: Pass
-    let new_value = ccu_uart_bgr | 0x10001;
-    unsafe { write_volatile(0x0200_190c as *mut u32, new_value) };
-    // Uart0 DivisorLatch LO: 0xD
-    // Uart0 DivisorLatch HI: 0x0
-    unsafe { write_volatile(0x0250_0000 as *mut u32, 0xD) };
-    unsafe { write_volatile(0x0250_0004 as *mut u32, 0) };
-    // Uart0 FifoControl
-    // RCVR Trigger: FIFO-2 less than full
-    // TX Empty Trigger: FIFO 1/2 Full
-    // DMA Mode: Mode 0
-    // XMIT FIFO Reset: 1
-    // RCVR FIFO Reset: 1
-    // Fifo Enable: 1
-    unsafe { write_volatile(0x0250_0008 as *mut u32, 0xF7) };
-    let uart0_line_control = unsafe { read_volatile(0x0250_000c as *const u32) };
-    // Uart0 Line control
-    // Divisor latch access, break control: unmodified
-    // Parity: disabled
-    // Stop bit: 1 bit
-    // Data length: 8 bits
-    let new_value = (uart0_line_control & 0xffffff60) | 3;
-    unsafe { write_volatile(0x0250_000c as *mut u32, new_value) };
-    // Uart0 modem control
-    // Uart function: UART mode
-    // Auto flow control: disabled
-    // Loop back or normal mode: normal mode
-    // RTS value: 0
-    // DTR value: 0
-    unsafe { write_volatile(0x0250_0010 as *mut u32, 0) };
+    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
+    let new_value = (pb_cfg1 & 0xffffff00) | 0b0110 | 0b0110 << 4;
+    unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
+
+    // pull-ups
+    let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
+    val = val | 1 << 16 | 1 << 18;
+    unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
+
+    // PB8 + PB9 drive level 3
+    unsafe { write_volatile(GPIO_PB_DRV1 as *mut u32, 0x0001_1133) };
 }
 
 fn configure_ccu_clocks() {
@@ -200,24 +197,13 @@ fn configure_ccu_clocks() {
     // Clock source: PLL_PERI(1x)
     // Divide factor N: 2 (1 << _0x1_)
     // Divide factor M: 3 (_0x2_ + 1)
-    unsafe { write_volatile(0x0200_1520 as *mut u32, 0x0300_0102) };
+    unsafe { write_volatile(APB0_CLK as *mut u32, 0x0300_0102) };
+    // unsafe { write_volatile(APB1_CLK as *mut u32, 0x0300_0102) };
     // RISC-V Clock
     // Clock source: PLL_CPU
     // Divide factor N: 2
     // Divide factor M: 1
     unsafe { write_volatile(0x0200_1d00 as *mut u32, 0x0500_0100) };
-}
-
-fn uart0_putchar(a: u8) {
-    loop {
-        let uart0_status = unsafe { read_volatile(0x0250_007C as *const u32) };
-        if uart0_status & 0x2 != 0 {
-            // TX FIFO is empty
-            break;
-        }
-    }
-    // write to uart transmitting holding register
-    unsafe { write_volatile(0x0250_0000 as *mut u32, a as u32) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
