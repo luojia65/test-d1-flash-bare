@@ -3,16 +3,17 @@
 #![no_main]
 // mod hal;
 #[macro_use]
+mod ccu;
 mod log;
 mod time;
 mod uart;
-use crate::time::{Bps, U32Ext};
+use crate::ccu::Clocks;
+use crate::time::U32Ext;
 
 // use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
 use core::panic::PanicInfo;
-use core::{fmt::Write, str};
-use d1_pac::{ccu, Peripherals};
+use d1_pac::Peripherals;
 
 const CCU_BASE: usize = 0x0200_1000;
 const CCU_UART_BGR: usize = CCU_BASE + 0x090C;
@@ -370,13 +371,16 @@ fn configure_uart_peripheral() {
 fn configure_uart_by_peripheral() {
     use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
     let config = Config {
         baudrate: 115200.bps(),
         wordlength: WordLength::Eight,
         parity: Parity::None,
         stopbits: StopBits::One,
     };
-    let serial = Serial::new(p.UART0, config);
+    let serial = Serial::new(p.UART0, config, &clocks);
 }
 
 fn configure_ccu_clocks() {

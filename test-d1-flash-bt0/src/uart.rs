@@ -1,9 +1,13 @@
 //! Uart peripheral on BT0 stage
+use crate::ccu::{Clocks, Gating, Reset};
 use crate::time::Bps;
 use core::ops::Deref;
-use d1_pac::uart::{
-    lcr::{DLS_A, EPS_A, PEN_A, STOP_A},
-    RegisterBlock,
+use d1_pac::{
+    uart::{
+        lcr::{DLS_A, EPS_A, PEN_A, STOP_A},
+        RegisterBlock,
+    },
+    CCU,
 };
 
 /// D1 serial peripheral
@@ -50,13 +54,10 @@ pub enum StopBits {
     Two,
 }
 
-impl<UART> Serial<UART> {
+impl<UART: Instance> Serial<UART> {
     /// Create instance of Uart
     #[rustfmt::skip]
-    pub fn new(uart: UART, config: impl Into<Config>) -> Self
-    where
-        UART: Deref<Target = RegisterBlock>,
-    {
+    pub fn new(uart: UART, config: impl Into<Config>, clock: &Clocks) -> Self {
         // 1. unwrap parameters
         let Config {
             baudrate,
@@ -66,10 +67,14 @@ impl<UART> Serial<UART> {
         } = config.into();
         let bps = baudrate.0;
         // 2. init peripheral clocks
-        // todo
+        // note(unsafe): async read and write using ccu registers
+        let ccu = unsafe { &*CCU::ptr() };
+        UART::assert_reset(&ccu);
+        UART::gating_mask(&ccu);
+        UART::deassert_reset(&ccu);
+        UART::gating_pass(&ccu);
         // 3. calculate and setbaudrate
-        // todo: calculate with peripheral clock
-        let uart_clk = (24000000 + 8 * bps) / (16 * bps);
+        let uart_clk = (clock.uart_clock.0 + 8 * bps) / (16 * bps);
         let (dlh, dll) = ((uart_clk >> 8) as u8, (uart_clk & 0xff) as u8);
         uart.lcr.modify(|_, w| w.dlab().divisor_latch());
         uart.dlh().write(|w| unsafe { w.dlh().bits(dlh) });
@@ -119,6 +124,10 @@ impl<UART> Serial<UART> {
         Serial { inner: uart }
     }
 }
+
+pub trait Instance: Gating + Reset + Deref<Target = RegisterBlock> {}
+
+impl Instance for d1_pac::UART0 {}
 
 /// Error types that may happen when serial transfer
 #[derive(Debug)]
