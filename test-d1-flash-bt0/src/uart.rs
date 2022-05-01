@@ -73,14 +73,19 @@ impl<UART: Instance> Serial<UART> {
         UART::gating_mask(&ccu);
         UART::deassert_reset(&ccu);
         UART::gating_pass(&ccu);
-        // 3. calculate and setbaudrate
+        // 3. set interrupt configuration
+        // on BT0 stage we disable all uart interrupts
+        uart.ier().write(|w| w.ptime().disable().rs485_int_en().disable()
+            .edssi().disable().elsi().disable()
+            .etbei().disable().erbfi().disable());
+        // 4. calculate and set baudrate
         let uart_clk = (clock.uart_clock.0 + 8 * bps) / (16 * bps);
         let (dlh, dll) = ((uart_clk >> 8) as u8, (uart_clk & 0xff) as u8);
         uart.lcr.modify(|_, w| w.dlab().divisor_latch());
         uart.dlh().write(|w| unsafe { w.dlh().bits(dlh) });
         uart.dll().write(|w| unsafe { w.dll().bits(dll) });
         uart.lcr.modify(|_, w| w.dlab().rx_buffer());
-        // 4. additional configurations
+        // 5. additional configurations
         let dls = match wordlength {
             WordLength::Five => DLS_A::FIVE,
             WordLength::Six => DLS_A::SIX,
@@ -120,7 +125,7 @@ impl<UART: Instance> Serial<UART> {
             .tft().half_full()
             .rt().two_less_than_full()
         );
-        // 5. return the instance
+        // 6. return the instance
         Serial { inner: uart }
     }
 }
