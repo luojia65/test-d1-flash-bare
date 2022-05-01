@@ -2,6 +2,9 @@
 #![no_std]
 #![no_main]
 // mod hal;
+mod time;
+mod uart;
+use crate::time::{Bps, U32Ext};
 
 // use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
@@ -106,29 +109,6 @@ pub unsafe extern "C" fn start() -> ! {
         main = sym main,
         options(noreturn)
     )
-    // asm!(
-    //     // open uart clock gate and reset gate
-    //     "li     t0, 0x0200190C",
-    //     "li     t1, (1 << 0) | (1 << 16)",
-    //     "sw     t1, 0(t0)",
-    //     // set gpio B8,B9 to uart0, B9 drive level 3
-    //     "li     t0, 0x02000000",
-    //     "lw     t1, 0x34(t0)",
-    //     "ori    t1, t1, 0b01100110",
-    //     "sw     t1, 0x34(t0)",
-    //     "lw     t1, 0x48(t0)",
-    //     "ori    t1, t1, 0b00110000",
-    //     "sw     t1, 0x48(t0)",
-    //     // write one char to uart
-    //     "li     t0, 0x02500000",
-    //     "li     t1, 82", // R
-    //     "1:",
-    //     "sb     t1, 0(t0)",
-    //     "j      1b", // todo: remove when there's uart output
-    //     "j      {}",
-    //     sym main,
-    //     options(noreturn)
-    // )
 }
 
 extern "C" fn main() {
@@ -379,8 +359,21 @@ fn configure_uart_peripheral() {
     new_value = ccu_uart_bgr | 0x1;
     unsafe { write_volatile(CCU_UART_BGR as *mut u32, new_value) };
 
-    configure_uart_like_xboot();
+    // configure_uart_like_xboot();
     // configure_uart_like_oreboot();
+    configure_uart_by_peripheral();
+}
+
+fn configure_uart_by_peripheral() {
+    use uart::{Config, Parity, Serial, StopBits, WordLength};
+    let p = Peripherals::take().unwrap();
+    let config = Config {
+        baudrate: 115200.bps(),
+        wordlength: WordLength::Eight,
+        parity: Parity::None,
+        stopbits: StopBits::One,
+    };
+    let serial = Serial::new(p.UART0, config);
 }
 
 fn configure_ccu_clocks() {
