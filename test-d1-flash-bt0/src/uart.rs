@@ -52,6 +52,7 @@ pub enum StopBits {
 
 impl<UART> Serial<UART> {
     /// Create instance of Uart
+    #[rustfmt::skip]
     pub fn new(uart: UART, config: impl Into<Config>) -> Self
     where
         UART: Deref<Target = RegisterBlock>,
@@ -90,48 +91,30 @@ impl<UART> Serial<UART> {
             Parity::Odd => (PEN_A::ENABLED, EPS_A::ODD),
             Parity::Even => (PEN_A::ENABLED, EPS_A::EVEN),
         };
-        uart.lcr.modify(
-            |_, w| {
-                w.dls()
-                    .variant(dls)
-                    .stop()
-                    .variant(stop)
-                    .pen()
-                    .variant(pen)
-                    .eps()
-                    .variant(eps)
-                    .bc()
-                    .clear_bit()
-            }, // todo: break control
+        uart.lcr.modify(|_, w| w
+            .dls().variant(dls)
+            .stop().variant(stop)
+            .pen().variant(pen)
+            .eps().variant(eps)
+            .bc().clear_bit() // todo: break control
         );
         // todo: pin configuration
-        uart.mcr.write(|w| {
-            w.dtr()
-                .deasserted()
-                .rts()
-                .deasserted()
-                .loop_()
-                .normal()
-                .afce()
-                .disabled()
-                .function()
-                .uart()
-        });
+        uart.mcr.write(|w| w
+            .dtr().deasserted()
+            .rts().deasserted()
+            .loop_().normal()
+            .afce().disabled()
+            .function().uart()
+        );
         // todo: fifo configuration
-        uart.fcr().write(|w| {
-            w.fifoe()
-                .set_bit()
-                .rfifor()
-                .set_bit()
-                .xfifor()
-                .set_bit()
-                .dmam()
-                .mode_0()
-                .tft()
-                .half_full()
-                .rt()
-                .two_less_than_full()
-        });
+        uart.fcr().write(|w| w
+            .fifoe().set_bit()
+            .rfifor().set_bit()
+            .xfifor().set_bit()
+            .dmam().mode_0()
+            .tft().half_full()
+            .rt().two_less_than_full()
+        );
         // 5. return the instance
         Serial { inner: uart }
     }

@@ -2,6 +2,8 @@
 #![no_std]
 #![no_main]
 // mod hal;
+#[macro_use]
+mod log;
 mod time;
 mod uart;
 use crate::time::{Bps, U32Ext};
@@ -38,7 +40,7 @@ const UART0_LSR: u32 = UART0_BASE + 0x0014;
 
 const UART_BAUD: u32 = 115200;
 
-const PER_HART_STACK_SIZE: usize = 4 * 4096; // 16KiB
+const PER_HART_STACK_SIZE: usize = 4 * 1024; // 4KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 #[link_section = ".bss.uninit"]
 static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
@@ -117,6 +119,7 @@ extern "C" fn main() {
     configure_gpio_pf_port();
     configure_uart_peripheral();
     configure_ccu_clocks();
+    println!("Println!");
     uart0_putchar_ore(b'O');
     uart0_putchar_ore(b'R');
     uart0_putchar_ore(b'E');
