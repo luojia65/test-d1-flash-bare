@@ -4,6 +4,7 @@
 // mod hal;
 #[macro_use]
 mod ccu;
+mod gpio;
 mod log;
 mod time;
 mod uart;
@@ -107,10 +108,23 @@ extern "C" fn main() {
     init_bss();
     light_up_led();
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
-    configure_gpio_pf_port();
-    configure_gpio_uart_peripheral();
+    // configure_gpio_pf_port();
+    // configure_gpio_uart_peripheral();
+    use gpio::Gpio;
     use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
+    let gpio = Gpio::new(p.GPIO);
+    let mut pb5 = gpio.portb.pb5.into_output();
+    let mut pc1 = gpio.portc.pc1.into_output();
+    // fixme: these are risc-v jtag pins, remove #[allow(unused)] in the future
+    #[allow(unused)]
+    let pf0 = gpio.portf.pf0.into_function_4();
+    #[allow(unused)]
+    let pf1 = gpio.portf.pf1.into_function_4();
+    #[allow(unused)]
+    let pf3 = gpio.portf.pf3.into_function_4();
+    #[allow(unused)]
+    let pf5 = gpio.portf.pf5.into_function_4();
     let clocks = Clocks {
         uart_clock: 24_000_000.hz(), // hard coded
     };
@@ -120,7 +134,7 @@ extern "C" fn main() {
         parity: Parity::None,
         stopbits: StopBits::One,
     };
-    let serial = Serial::new(p.UART0, config, &clocks);
+    let serial = Serial::new(p.UART0, config, &clocks); // fixme: don't drop this struct
     println!("OREBOOT");
     println!("Test");
     loop {
@@ -152,31 +166,31 @@ fn light_up_led() {
     unsafe { write_volatile(GPIO_PB_DATA as *mut u32, val) };
 }
 
-fn configure_gpio_pf_port() {
-    let pf_cfg0 = unsafe { read_volatile(0x0200_00f0 as *const u32) };
-    // PF5 Select: R-JRAG-CK
-    // PF3 Select: R-JRAG-DO
-    // PF1 Select: R-JRAG-DI
-    // PF0 Select: R-JRAG-MS
-    let new_value = (pf_cfg0 & 0xff0f0f00) | 0x00404044;
-    unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
-}
+// fn configure_gpio_pf_port() {
+//     let pf_cfg0 = unsafe { read_volatile(0x0200_00f0 as *const u32) };
+//     // PF5 Select: R-JRAG-CK
+//     // PF3 Select: R-JRAG-DO
+//     // PF1 Select: R-JRAG-DI
+//     // PF0 Select: R-JRAG-MS
+//     let new_value = (pf_cfg0 & 0xff0f0f00) | 0x00404044;
+//     unsafe { write_volatile(0x0200_00f0 as *mut u32, new_value) };
+// }
 
-fn configure_gpio_uart_peripheral() {
-    // PB1 Select: UART0-RX
-    // PB0 Select: UART0-TX
-    let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
-    let new_value = (pb_cfg1 & 0xffffff00) | 0b0110 | 0b0110 << 4;
-    unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
+// fn configure_gpio_uart_peripheral() {
+//     // PB1 Select: UART0-RX
+//     // PB0 Select: UART0-TX
+//     let pb_cfg1 = unsafe { read_volatile(GPIO_PB_CFG1 as *const u32) };
+//     let new_value = (pb_cfg1 & 0xffffff00) | 0b0110 | 0b0110 << 4;
+//     unsafe { write_volatile(GPIO_PB_CFG1 as *mut u32, new_value) };
 
-    // pull-ups
-    let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
-    val = val | 1 << 16 | 1 << 18;
-    unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
+//     // pull-ups
+//     let mut val = unsafe { read_volatile(GPIO_PB_PULL as *mut u32) };
+//     val = val | 1 << 16 | 1 << 18;
+//     unsafe { write_volatile(GPIO_PB_PULL as *mut u32, val) };
 
-    // PB8 + PB9 drive level 3
-    unsafe { write_volatile(GPIO_PB_DRV1 as *mut u32, 0x0001_1133) };
-}
+//     // PB8 + PB9 drive level 3
+//     unsafe { write_volatile(GPIO_PB_DRV1 as *mut u32, 0x0001_1133) };
+// }
 
 #[cfg_attr(not(test), panic_handler)]
 #[allow(unused)]
