@@ -11,10 +11,8 @@ use d1_pac::{
 };
 
 /// D1 serial peripheral
-///
-/// Parameter PA: Physical Address
 #[derive(Debug)]
-pub struct Serial<UART> {
+pub struct Serial<UART: Instance> {
     inner: UART,
 }
 
@@ -130,6 +128,16 @@ impl<UART: Instance> Serial<UART> {
     }
 }
 
+// fixme: do not drop uart when println! is used
+// // Disable UART when drop; either next bootloading stage will initialize again,
+// // or we provide ownership of serial structure to next bootloading stage.
+// impl<UART: Instance> Drop for Serial<UART> {
+//     fn drop(&mut self) {
+//         UART::assert_reset(&ccu);
+//         UART::gating_mask(&ccu);
+//     }
+// }
+
 pub trait Instance: Gating + Reset + Deref<Target = RegisterBlock> {}
 
 impl Instance for d1_pac::UART0 {}
@@ -146,17 +154,14 @@ impl embedded_hal::serial::Error for Error {
     }
 }
 
-impl<UART> embedded_hal::serial::ErrorType for Serial<UART>
+impl<UART: Instance> embedded_hal::serial::ErrorType for Serial<UART>
 where
     UART: Deref<Target = RegisterBlock>,
 {
     type Error = Error;
 }
 
-impl<UART> embedded_hal::serial::nb::Write<u8> for Serial<UART>
-where
-    UART: Deref<Target = RegisterBlock>,
-{
+impl<UART: Instance> embedded_hal::serial::nb::Write<u8> for Serial<UART> {
     fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         if self.inner.usr.read().tfnf().is_full() {
             return Err(nb::Error::WouldBlock);

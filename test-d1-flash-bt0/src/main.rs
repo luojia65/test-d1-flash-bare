@@ -106,7 +106,7 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() {
     init_bss();
     light_up_led();
-    configure_ccu_clocks();
+    // there was configure_ccu_clocks, but ROM code have already done configuring for us
     configure_gpio_pf_port();
     configure_gpio_uart_peripheral();
     use uart::{Config, Parity, Serial, StopBits, WordLength};
@@ -176,34 +176,6 @@ fn configure_gpio_uart_peripheral() {
 
     // PB8 + PB9 drive level 3
     unsafe { write_volatile(GPIO_PB_DRV1 as *mut u32, 0x0001_1133) };
-}
-
-fn configure_ccu_clocks() {
-    let pll_cpu_ctrl = unsafe { read_volatile(0x0200_1000 as *const u32) };
-    // 11010111 11111100 00000000 11111100
-    // 11001000 00000000 00101001 00000000
-    // PLL CPU control
-    // Enable: 1
-    // LDO Enable: 1
-    // Lock enable: 0
-    // PLL output gate: enable
-    // PLL N: 42
-    // PLL Unlock level: 21-29 clock cycles
-    // PLL Lock level: 24-26 clock cycles
-    // PLL M: 1
-    let new_value = (pll_cpu_ctrl & 0xD7FC00FC) | 0xC8002900;
-    unsafe { write_volatile(0x0200_1000 as *mut u32, new_value) };
-    // APB0 clock configuration; APB0_CLK = source frequency / (N * M)
-    // Clock source: PLL_PERI(1x)
-    // Divide factor N: 2 (1 << _0x1_)
-    // Divide factor M: 3 (_0x2_ + 1)
-    unsafe { write_volatile(APB0_CLK as *mut u32, 0x0300_0102) };
-    // unsafe { write_volatile(APB1_CLK as *mut u32, 0x0300_0102) };
-    // RISC-V Clock
-    // Clock source: PLL_CPU
-    // Divide factor N: 2
-    // Divide factor M: 1
-    unsafe { write_volatile(0x0200_1d00 as *mut u32, 0x0500_0100) };
 }
 
 #[cfg_attr(not(test), panic_handler)]
