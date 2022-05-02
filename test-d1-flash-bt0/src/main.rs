@@ -11,6 +11,7 @@ mod uart;
 // mod jtag;
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
+use embedded_hal::digital::blocking::OutputPin;
 
 // use crate::hal::{pac_encoding::UART0_BASE, Serial};
 use core::arch::asm;
@@ -131,7 +132,9 @@ extern "C" fn main() {
     // fixme: don't drop this struct
 
     let mut pb5 = gpio.portb.pb5.into_output();
+    pb5.set_high().unwrap();
     let mut pc1 = gpio.portc.pc1.into_output();
+    pc1.set_high().unwrap();
     // fixme: these are risc-v jtag pins, remove #[allow(unused)] in the future
     #[allow(unused)]
     let pf0 = gpio.portf.pf0.into_function_4();

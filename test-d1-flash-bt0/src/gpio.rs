@@ -1,5 +1,6 @@
 //! General Purpose Input-Output
 use core::marker::PhantomData;
+use core::mem::transmute;
 use core::ptr::{read_volatile, write_volatile};
 use d1_pac::GPIO;
 
@@ -45,24 +46,20 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     // a correct type parameter change after calling this function.
     #[inline(always)]
     fn set_mode<M: PinMode>(&mut self) {
-        let (cfg_reg_offset, cfg_reg_idx) = self.cfg_reg();
-        let cfg_reg_ptr = unsafe { (GPIO::ptr() as *mut u32).add(cfg_reg_offset) };
-        let mut new_cfg = unsafe { read_volatile(cfg_reg_ptr) };
-        new_cfg &= !(0xF << cfg_reg_idx);
-        new_cfg |= (M::VALUE as u32) << cfg_reg_idx;
-        unsafe { write_volatile(cfg_reg_ptr, new_cfg) };
+        let mut new_cfg = unsafe { read_volatile(Self::CFG_REG) };
+        new_cfg &= !(0xF << Self::CFG_IDX);
+        new_cfg |= (M::VALUE as u32) << Self::CFG_IDX;
+        unsafe { write_volatile(Self::CFG_REG, new_cfg) };
     }
-    #[inline(always)]
-    const fn cfg_reg(&self) -> (usize, usize) {
-        let port_offset_in_u32 = (P as usize - b'A' as usize) * 0xC;
-        let (cfg_reg_offset, cfg_idx) = match N {
-            0..=7 => (0x0, N << 2),
-            8..=15 => (0x1, (N - 8) << 2),
-            16..=23 => (0x2, (N - 16) << 2),
-            _ => unreachable!(),
-        };
-        (port_offset_in_u32 + cfg_reg_offset, cfg_idx as usize)
-    }
+    const PORT_OFFSET_BYTES: usize = (P as usize - b'A' as usize) * 0x30;
+    const DATA_REG: *mut u32 = unsafe {
+        (transmute::<_, usize>(GPIO::ptr()) + Self::PORT_OFFSET_BYTES + 0x10) as *mut u32
+    };
+    const CFG_REG: *mut u32 = unsafe {
+        (transmute::<_, usize>(GPIO::ptr()) + Self::PORT_OFFSET_BYTES + (((N >> 3) as usize) << 2))
+            as *mut u32
+    };
+    const CFG_IDX: u8 = (N & 0x7) << 2;
 }
 
 macro_rules! define_gpio {
@@ -137,6 +134,49 @@ define_gpio! {
         PF3: (pf3, 3, Disabled), ("PF3", "D1"), ("SDC0-CMD", "JTAG-DO", "R-JTAG-DO", "I2S2-BCLK", x, x, x),
         PF5: (pf5, 5, Disabled), ("PF5", "E2"), ("SDC0-D2", "JTAG-CK", "R-JTAG-CK", "I2S2-LRCK", x, x, x),
     ]
+}
+
+impl<const P: char, const N: u8> embedded_hal::digital::ErrorType for Pin<P, N, Input> {
+    type Error = core::convert::Infallible;
+}
+
+impl<const P: char, const N: u8> embedded_hal::digital::blocking::InputPin for Pin<P, N, Input> {
+    fn is_high(&self) -> Result<bool, Self::Error> {
+        Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) != 0)
+    }
+    fn is_low(&self) -> Result<bool, Self::Error> {
+        Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) == 0)
+    }
+}
+
+impl<const P: char, const N: u8> embedded_hal::digital::ErrorType for Pin<P, N, Output> {
+    type Error = core::convert::Infallible;
+}
+
+impl<const P: char, const N: u8> embedded_hal::digital::blocking::OutputPin for Pin<P, N, Output> {
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        let mut new_data = unsafe { read_volatile(Self::DATA_REG) };
+        new_data &= !(1 << N);
+        unsafe { write_volatile(Self::DATA_REG, new_data) };
+        Ok(())
+    }
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        let mut new_data = unsafe { read_volatile(Self::DATA_REG) };
+        new_data |= 1 << N;
+        unsafe { write_volatile(Self::DATA_REG, new_data) };
+        Ok(())
+    }
+}
+
+impl<const P: char, const N: u8> embedded_hal::digital::blocking::StatefulOutputPin
+    for Pin<P, N, Output>
+{
+    fn is_set_high(&self) -> Result<bool, Self::Error> {
+        Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) != 0)
+    }
+    fn is_set_low(&self) -> Result<bool, Self::Error> {
+        Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) == 0)
+    }
 }
 
 /// Input mode (type state)

@@ -172,10 +172,7 @@ impl embedded_hal::serial::Error for Error {
     }
 }
 
-impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for Serial<UART, PINS>
-where
-    UART: Deref<Target = RegisterBlock>,
-{
+impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for Serial<UART, PINS> {
     type Error = Error;
 }
 
