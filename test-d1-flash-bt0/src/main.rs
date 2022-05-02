@@ -10,6 +10,7 @@ mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
+mod mctl;
 mod time;
 mod uart;
 use crate::ccu::Clocks;
@@ -17,6 +18,7 @@ use crate::time::U32Ext;
 use buddy_system_allocator::LockedHeap;
 use core::arch::asm;
 use core::panic::PanicInfo;
+
 use d1_pac::Peripherals;
 use embedded_hal::digital::blocking::OutputPin;
 
@@ -156,6 +158,7 @@ extern "C" fn main() {
 
     println!("OREBOOT");
     println!("Test");
+    mctl::init();
     loop {
         for i in 1..=3 {
             println!("Rust🦀 {}", i);
