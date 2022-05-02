@@ -162,6 +162,12 @@ define_gpio! {
     ]
     PortC, portc, 'C', [
         PC1: (pc1, 1, Disabled), ("PC1", "F1"), ("UART2-RX", "TWI2-SDA", x, x, x, x, x),
+        PC2: (pc2, 2, Disabled), ("PC2", "G3"), ("SPI0-CLK", "SDC2-CLK", x, x, x, x, x),
+        PC3: (pc3, 3, Disabled), ("PC3", "G2"), ("SPI0-CS0", "SDC2-CMD", x, x, x, x, x),
+        PC4: (pc4, 4, Disabled), ("PC4", "H3"), ("SPI0-MOSI", "SDC2-D2", "BOOT-SEL0", x, x, x, x),
+        PC5: (pc5, 5, Disabled), ("PC5", "F5"), ("SPI0-MISO", "SDC2-D1", "BOOT-SEL1", x, x, x, x),
+        PC6: (pc6, 6, Disabled), ("PC6", "G6"), ("SPI0-WP", "SDC2-D0", "UART3-TX", "TWI3-SCK", "DBG-CLK", x, x),
+        PC7: (pc7, 7, Disabled), ("PC7", "G5"), ("SPI0-HOLD", "SDC2-D3", "UART3-RX", "TWI3-SDA", "TCON-TRIG", x, x),
     ]
     PortF, portf, 'F', [
         PF0: (pf0, 0, Disabled), ("PF0", "C2"), ("SDC0-D1", "JTAG-MS", "R-JTAG-MS", "I2S2-DOUT1", "I2S2-DIN0", x, x),
