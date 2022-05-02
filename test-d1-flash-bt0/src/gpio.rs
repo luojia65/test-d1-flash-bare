@@ -32,6 +32,33 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
         self.into_mode()
     }
 }
+
+#[allow(unused)] // FIXME
+impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
+    // todo: should these be designed as type state?
+    /// Enable internal pull-up
+    #[inline]
+    pub fn set_pull_up(&mut self) {
+        let mut val = unsafe { read_volatile(Self::PULL_REG) };
+        val |= 0b01 << Self::PULL_IDX;
+        unsafe { write_volatile(Self::PULL_REG, val) };
+    }
+    /// Enable internal pull-down
+    #[inline]
+    pub fn set_pull_down(&mut self) {
+        let mut val = unsafe { read_volatile(Self::PULL_REG) };
+        val |= 0b10 << Self::PULL_IDX;
+        unsafe { write_volatile(Self::PULL_REG, val) };
+    }
+    /// Disable internal pulls
+    #[inline]
+    pub fn set_pull_none(&mut self) {
+        let mut val = unsafe { read_volatile(Self::PULL_REG) };
+        val |= 0b00 << Self::PULL_IDX;
+        unsafe { write_volatile(Self::PULL_REG, val) };
+    }
+}
+
 impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     #[inline(always)]
     const fn new() -> Self {
@@ -52,14 +79,21 @@ impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
         unsafe { write_volatile(Self::CFG_REG, new_cfg) };
     }
     const PORT_OFFSET_BYTES: usize = (P as usize - b'A' as usize) * 0x30;
-    const DATA_REG: *mut u32 = unsafe {
-        (transmute::<_, usize>(GPIO::ptr()) + Self::PORT_OFFSET_BYTES + 0x10) as *mut u32
-    };
     const CFG_REG: *mut u32 = unsafe {
         (transmute::<_, usize>(GPIO::ptr()) + Self::PORT_OFFSET_BYTES + (((N >> 3) as usize) << 2))
             as *mut u32
     };
     const CFG_IDX: u8 = (N & 0x7) << 2;
+    const DATA_REG: *mut u32 = unsafe {
+        (transmute::<_, usize>(GPIO::ptr()) + Self::PORT_OFFSET_BYTES + 0x10) as *mut u32
+    };
+    const PULL_REG: *mut u32 = unsafe {
+        (transmute::<_, usize>(GPIO::ptr())
+            + Self::PORT_OFFSET_BYTES
+            + 0x24
+            + (((N >> 4) as usize) << 2)) as *mut u32
+    };
+    const PULL_IDX: u8 = (N & 0xF) << 1;
 }
 
 macro_rules! define_gpio {
