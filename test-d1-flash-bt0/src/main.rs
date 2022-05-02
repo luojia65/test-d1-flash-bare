@@ -145,7 +145,9 @@ extern "C" fn main() {
     println!("OREBOOT");
     println!("Test");
     loop {
-        println!("Rust🦀");
+        for i in 1..=3 {
+            println!("Rust🦀 {}", i);
+        }
         for _ in 0..20_000_000 {
             unsafe { core::arch::asm!("nop") };
         }
