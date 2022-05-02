@@ -134,24 +134,26 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
     }
     // Close uart and release peripheral
     #[allow(unused)] // FIXME
+    #[inline]
     pub fn free(self) -> (UART, PINS) {
-        // note(unsafe): async read and write using ccu registers
-        let ccu = unsafe { &*CCU::ptr() };
-        UART::assert_reset(&ccu);
-        UART::gating_mask(&ccu);
-        (self.inner, self.pins)
+        use core::ptr;
+        let inner: UART = unsafe { ptr::read(&self.inner as *const _) };
+        let pins: PINS = unsafe { ptr::read(&self.pins as *const _) };
+        // self is closed via Drop trait
+        (inner, pins)
     }
 }
 
-// fixme: do not drop uart when println! is used
-// // Disable UART when drop; either next bootloading stage will initialize again,
-// // or we provide ownership of serial structure to next bootloading stage.
-// impl<UART: Instance> Drop for Serial<UART> {
-//     fn drop(&mut self) {
-//         UART::assert_reset(&ccu);
-//         UART::gating_mask(&ccu);
-//     }
-// }
+// Disable UART when drop; either next bootloading stage will initialize again,
+// or we provide ownership of serial structure to next bootloading stage.
+impl<UART: Instance, PINS> Drop for Serial<UART, PINS> {
+    #[inline]
+    fn drop(&mut self) {
+        let ccu = unsafe { &*CCU::ptr() };
+        UART::assert_reset(&ccu);
+        UART::gating_mask(&ccu);
+    }
+}
 
 pub trait Instance: Gating + Reset + Deref<Target = RegisterBlock> {}
 

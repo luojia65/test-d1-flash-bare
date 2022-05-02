@@ -1,22 +1,24 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![feature(default_alloc_error_handler)]
+#![feature(let_chains)]
+#![feature(once_cell)]
 #![no_std]
 #![no_main]
 extern crate alloc;
 #[macro_use]
+mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
-mod log;
 mod time;
 mod uart;
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
-use embedded_hal::digital::blocking::OutputPin;
 use buddy_system_allocator::LockedHeap;
-use d1_pac::Peripherals;
 use core::arch::asm;
 use core::panic::PanicInfo;
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
 
 const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -100,7 +102,11 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() {
     // init program and peripherals
     init_bss();
-    unsafe { SBI_HEAP.lock().init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE) };
+    unsafe {
+        SBI_HEAP
+            .lock()
+            .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
+    };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     use gpio::Gpio;
     use jtag::Jtag;
@@ -121,7 +127,7 @@ extern "C" fn main() {
     let mut pc1 = gpio.portc.pc1.into_output();
     pc1.set_high().unwrap();
 
-    // prepare serial port
+    // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
     let rx = gpio.portb.pb9.into_function_6();
     let clocks = Clocks {
@@ -133,14 +139,16 @@ extern "C" fn main() {
         parity: Parity::None,
         stopbits: StopBits::One,
     };
-    // fixme: don't drop this struct
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
+    crate::logging::set_logger(serial);
 
     println!("OREBOOT");
     println!("Test");
     loop {
         println!("Rust🦀");
-        for _ in 0..100000 {}
+        for _ in 0..20_000_000 {
+            unsafe { core::arch::asm!("nop") };
+        }
     }
 }
 
