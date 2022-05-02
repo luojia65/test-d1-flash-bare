@@ -156,6 +156,10 @@ pub trait Instance: Gating + Reset + Deref<Target = RegisterBlock> {}
 
 impl Instance for d1_pac::UART0 {}
 
+// note: if we want to assert RTS and/or CTS, implement Pins<UARTi> for them
+// then users can use (tx, rx, rts, cts) in PINS type parameter
+// and Serial::new function should take care of it to enable rtc and cts for peripheral
+
 pub trait Pins<UART> {}
 
 impl Pins<d1_pac::UART0> for (PB8<Function<6>>, PB9<Function<6>>) {}
