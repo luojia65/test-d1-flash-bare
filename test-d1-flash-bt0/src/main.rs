@@ -8,6 +8,7 @@ mod gpio;
 mod log;
 mod time;
 mod uart;
+// mod jtag;
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
 
@@ -16,10 +17,10 @@ use core::arch::asm;
 use core::panic::PanicInfo;
 use d1_pac::Peripherals;
 
-const CCU_BASE: usize = 0x0200_1000;
+// const CCU_BASE: usize = 0x0200_1000;
 
-const APB0_CLK: usize = CCU_BASE + 0x0520; // 0x0200_1520
-const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
+// const APB0_CLK: usize = CCU_BASE + 0x0520; // 0x0200_1520
+// const APB1_CLK: usize = CCU_BASE + 0x0524; // 0x0200_1524
 
 const GPIO_BASE_ADDR: u32 = 0x0200_0000;
 const GPIO_PB_CFG0: u32 = GPIO_BASE_ADDR + 0x0030;
@@ -114,6 +115,21 @@ extern "C" fn main() {
     use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
     let gpio = Gpio::new(p.GPIO);
+    let tx = gpio.portb.pb8.into_function_6();
+    let rx = gpio.portb.pb9.into_function_6();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
+    let config = Config {
+        baudrate: 115200.bps(),
+        wordlength: WordLength::Eight,
+        parity: Parity::None,
+        stopbits: StopBits::One,
+    };
+    let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
+
+    // fixme: don't drop this struct
+
     let mut pb5 = gpio.portb.pb5.into_output();
     let mut pc1 = gpio.portc.pc1.into_output();
     // fixme: these are risc-v jtag pins, remove #[allow(unused)] in the future
@@ -125,16 +141,6 @@ extern "C" fn main() {
     let pf3 = gpio.portf.pf3.into_function_4();
     #[allow(unused)]
     let pf5 = gpio.portf.pf5.into_function_4();
-    let clocks = Clocks {
-        uart_clock: 24_000_000.hz(), // hard coded
-    };
-    let config = Config {
-        baudrate: 115200.bps(),
-        wordlength: WordLength::Eight,
-        parity: Parity::None,
-        stopbits: StopBits::One,
-    };
-    let serial = Serial::new(p.UART0, config, &clocks); // fixme: don't drop this struct
     println!("OREBOOT");
     println!("Test");
     loop {

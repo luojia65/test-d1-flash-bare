@@ -1,5 +1,9 @@
 //! Uart peripheral on BT0 stage
 use crate::ccu::{Clocks, Gating, Reset};
+use crate::gpio::{
+    portb::{PB8, PB9},
+    Function,
+};
 use crate::time::Bps;
 use core::ops::Deref;
 use d1_pac::{
@@ -12,7 +16,8 @@ use d1_pac::{
 
 /// D1 serial peripheral
 #[derive(Debug)]
-pub struct Serial<UART: Instance> {
+pub struct Serial<UART: Instance, PINS> {
+    pins: PINS,
     inner: UART,
 }
 
@@ -52,10 +57,10 @@ pub enum StopBits {
     Two,
 }
 
-impl<UART: Instance> Serial<UART> {
+impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
     /// Create instance of Uart
     #[rustfmt::skip]
-    pub fn new(uart: UART, config: impl Into<Config>, clock: &Clocks) -> Self {
+    pub fn new(uart: UART, pins: PINS, config: impl Into<Config>, clock: &Clocks) -> Self {
         // 1. unwrap parameters
         let Config {
             baudrate,
@@ -124,7 +129,16 @@ impl<UART: Instance> Serial<UART> {
             .rt().two_less_than_full()
         );
         // 6. return the instance
-        Serial { inner: uart }
+        Serial { pins, inner: uart }
+    }
+    // Close uart and release peripheral
+    #[allow(unused)] // FIXME
+    pub fn free(self) -> (UART, PINS) {
+        // note(unsafe): async read and write using ccu registers
+        let ccu = unsafe { &*CCU::ptr() };
+        UART::assert_reset(&ccu);
+        UART::gating_mask(&ccu);
+        (self.inner, self.pins)
     }
 }
 
@@ -142,6 +156,10 @@ pub trait Instance: Gating + Reset + Deref<Target = RegisterBlock> {}
 
 impl Instance for d1_pac::UART0 {}
 
+pub trait Pins<UART> {}
+
+impl Pins<d1_pac::UART0> for (PB8<Function<6>>, PB9<Function<6>>) {}
+
 /// Error types that may happen when serial transfer
 #[derive(Debug)]
 pub struct Error {
@@ -154,14 +172,14 @@ impl embedded_hal::serial::Error for Error {
     }
 }
 
-impl<UART: Instance> embedded_hal::serial::ErrorType for Serial<UART>
+impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for Serial<UART, PINS>
 where
     UART: Deref<Target = RegisterBlock>,
 {
     type Error = Error;
 }
 
-impl<UART: Instance> embedded_hal::serial::nb::Write<u8> for Serial<UART> {
+impl<UART: Instance, PINS> embedded_hal::serial::nb::Write<u8> for Serial<UART, PINS> {
     fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         if self.inner.usr.read().tfnf().is_full() {
             return Err(nb::Error::WouldBlock);

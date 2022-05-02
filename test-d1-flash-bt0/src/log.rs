@@ -12,7 +12,12 @@ struct SerialUart0;
 impl fmt::Write for SerialUart0 {
     #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let mut serial: Serial<UART0> = unsafe { core::mem::transmute(()) };
+        use crate::gpio::{
+            portb::{PB8, PB9},
+            Function,
+        };
+        let mut serial: Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)> =
+            unsafe { core::mem::transmute(()) };
         for byte in s.as_bytes() {
             block!(serial.write(*byte)).unwrap();
         }

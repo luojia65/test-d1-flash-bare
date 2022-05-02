@@ -8,6 +8,7 @@ pub struct Pin<const P: char, const N: u8, MODE = Disabled> {
     _mode: PhantomData<MODE>,
 }
 
+#[allow(unused)] // FIXME
 impl<const P: char, const N: u8, MODE> Pin<P, N, MODE> {
     /// Disables the pin
     #[inline]
@@ -123,18 +124,18 @@ $(#[allow(unused)] pub mod $portx {
 
 define_gpio! {
     PortB, portb, 'B', [
-        PB0: (pb0, 0, Disabled), ("PB0", "1"), ("PWM3", "IR-TX", "TWI2-SCK", "SPI1-WP/DBI-TE", "UART0-TX", "UART2-TX", "OWA-OUT"),
-        PB1: (pb1, 1, Disabled), ("PB1", "1"), ("PWM4", "I2S2-DOUT3", "TWI2-SDA", "I2S2-DIN3", "UART0-RX", "UART2-RX", "IR-RX"),
-        PB5: (pb5, 5, Disabled), ("PB5", "1"), ("LCD0-D9", "I2S2-BCLK", "TWI1-SDA", "PWM0", "LCD0-D21", "UART5-RX", x),
+        PB5: (pb5, 5, Disabled), ("PB5", "K15"), ("LCD0-D9", "I2S2-BCLK", "TWI1-SDA", "PWM0", "LCD0-D21", "UART5-RX", x),
+        PB8: (pb8, 8, Disabled), ("PB8", "G15"), ("DMIC-DATA3", "PWM5", "TWI2-SCK", "SPI1-HOLD/DBI-DCX/DBI-WRX", "UART0-TX", "UART1-TX", x),
+        PB9: (pb9, 9, Disabled), ("PB9", "G16"), ("DMIC-DATA2", "PWM6", "TWI2-SDA", "SPI1-MISO/DBI-SDI/DBI-TE/DBI-DCX", "UART0-RX", "UART1-RX", x),
     ]
     PortC, portc, 'C', [
-        PC1: (pc1, 1, Disabled), ("PC1", "1"), ("UART2-RX", "TWI2-SDA", x, x, x, x, x),
+        PC1: (pc1, 1, Disabled), ("PC1", "F1"), ("UART2-RX", "TWI2-SDA", x, x, x, x, x),
     ]
     PortF, portf, 'F', [
-        PF0: (pf0, 0, Disabled), ("PF0", "1"), ("SDC0-D1", "JTAG-MS", "R-JTAG-MS", "I2S2-DOUT1", "I2S2-DIN0", x, x),
-        PF1: (pf1, 1, Disabled), ("PF1", "1"), ("SDC0-D0", "JTAG-DI", "R-JTAG-DI", "I2S2-DOUT0", "I2S2-DIN1", x, x),
-        PF3: (pf3, 3, Disabled), ("PF3", "1"), ("SDC0-CMD", "JTAG-DO", "R-JTAG-DO", "I2S2-BCLK", x, x, x),
-        PF5: (pf5, 5, Disabled), ("PF5", "1"), ("SDC0-D2", "JTAG-CK", "R-JTAG-CK", "I2S2-LRCK", x, x, x),
+        PF0: (pf0, 0, Disabled), ("PF0", "C2"), ("SDC0-D1", "JTAG-MS", "R-JTAG-MS", "I2S2-DOUT1", "I2S2-DIN0", x, x),
+        PF1: (pf1, 1, Disabled), ("PF1", "C1"), ("SDC0-D0", "JTAG-DI", "R-JTAG-DI", "I2S2-DOUT0", "I2S2-DIN1", x, x),
+        PF3: (pf3, 3, Disabled), ("PF3", "D1"), ("SDC0-CMD", "JTAG-DO", "R-JTAG-DO", "I2S2-BCLK", x, x, x),
+        PF5: (pf5, 5, Disabled), ("PF5", "E2"), ("SDC0-D2", "JTAG-CK", "R-JTAG-CK", "I2S2-LRCK", x, x, x),
     ]
 }
 
