@@ -4,10 +4,10 @@
 #[macro_use]
 mod ccu;
 mod gpio;
+mod jtag;
 mod log;
 mod time;
 mod uart;
-// mod jtag;
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
 use embedded_hal::digital::blocking::OutputPin;
@@ -94,9 +94,17 @@ extern "C" fn main() {
     init_bss();
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     use gpio::Gpio;
+    use jtag::Jtag;
     use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
     let gpio = Gpio::new(p.GPIO);
+
+    // configure jtag interface
+    let tms = gpio.portf.pf0.into_function_4();
+    let tck = gpio.portf.pf5.into_function_4();
+    let tdi = gpio.portf.pf1.into_function_4();
+    let tdo = gpio.portf.pf3.into_function_4();
+    let _jtag = Jtag::new((tms, tck, tdi, tdo));
 
     // light up led
     let mut pb5 = gpio.portb.pb5.into_output();
@@ -118,16 +126,6 @@ extern "C" fn main() {
     };
     // fixme: don't drop this struct
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
-
-    // fixme: these are risc-v jtag pins, remove #[allow(unused)] in the future
-    #[allow(unused)]
-    let pf0 = gpio.portf.pf0.into_function_4();
-    #[allow(unused)]
-    let pf1 = gpio.portf.pf1.into_function_4();
-    #[allow(unused)]
-    let pf3 = gpio.portf.pf3.into_function_4();
-    #[allow(unused)]
-    let pf5 = gpio.portf.pf5.into_function_4();
 
     println!("OREBOOT");
     println!("Test");
