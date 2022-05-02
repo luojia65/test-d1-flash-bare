@@ -14,11 +14,13 @@ pub struct Jtag<PINS> {
 
 impl<PINS: Pins> Jtag<PINS> {
     /// Create JTAG instance
+    #[inline]
     pub fn new(pins: PINS) -> Self {
         Self { pins }
     }
     /// Release pins from JTAG instance
     #[allow(unused)]
+    #[inline]
     pub fn free(self) -> PINS {
         self.pins
     }

@@ -60,6 +60,7 @@ pub enum StopBits {
 impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
     /// Create instance of Uart
     #[rustfmt::skip]
+    #[inline]
     pub fn new(uart: UART, pins: PINS, config: impl Into<Config>, clock: &Clocks) -> Self {
         // 1. unwrap parameters
         let Config {
@@ -171,6 +172,7 @@ pub struct Error {
 }
 
 impl embedded_hal::serial::Error for Error {
+    #[inline]
     fn kind(&self) -> embedded_hal::serial::ErrorKind {
         self.kind
     }
@@ -181,6 +183,7 @@ impl<UART: Instance, PINS> embedded_hal::serial::ErrorType for Serial<UART, PINS
 }
 
 impl<UART: Instance, PINS> embedded_hal::serial::nb::Write<u8> for Serial<UART, PINS> {
+    #[inline]
     fn write(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         if self.inner.usr.read().tfnf().is_full() {
             return Err(nb::Error::WouldBlock);
@@ -188,6 +191,7 @@ impl<UART: Instance, PINS> embedded_hal::serial::nb::Write<u8> for Serial<UART, 
         self.inner.thr().write(|w| unsafe { w.thr().bits(word) });
         Ok(())
     }
+    #[inline]
     fn flush(&mut self) -> nb::Result<(), Self::Error> {
         if self.inner.usr.read().tfe().is_empty() {
             Ok(())

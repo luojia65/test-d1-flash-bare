@@ -1,6 +1,8 @@
 #![feature(naked_functions, asm_sym, asm_const)]
+#![feature(default_alloc_error_handler)]
 #![no_std]
 #![no_main]
+extern crate alloc;
 #[macro_use]
 mod ccu;
 mod gpio;
@@ -11,15 +13,21 @@ mod uart;
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
 use embedded_hal::digital::blocking::OutputPin;
-
+use buddy_system_allocator::LockedHeap;
+use d1_pac::Peripherals;
 use core::arch::asm;
 use core::panic::PanicInfo;
-use d1_pac::Peripherals;
 
-const PER_HART_STACK_SIZE: usize = 4 * 1024; // 4KiB
+const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
 #[link_section = ".bss.uninit"]
 static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+
+const SBI_HEAP_SIZE: usize = 2 * 1024; // 2KiB
+#[link_section = ".bss.uninit"]
+static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
+#[global_allocator]
+static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
 #[naked]
 #[link_section = ".head.text"]
@@ -92,6 +100,7 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() {
     // init program and peripherals
     init_bss();
+    unsafe { SBI_HEAP.lock().init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE) };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     use gpio::Gpio;
     use jtag::Jtag;

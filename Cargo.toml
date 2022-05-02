@@ -5,7 +5,13 @@ members = [
 ]
 default-members = ["xtask"]
 
+[profile.dev]
+opt-level = 1               # Use slightly better optimizations.
+overflow-checks = false     # Disable integer overflow checks.
+lto = true
+
 # Leave debug symbol information on release compilation mode
 # That's okay, these symbols won't appear on flash binary
 [profile.release]
 debug = true
+lto = true

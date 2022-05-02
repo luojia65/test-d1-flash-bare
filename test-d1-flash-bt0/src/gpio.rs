@@ -113,6 +113,7 @@ pub struct Gpio {
 }
 
 impl Gpio {
+    #[inline]
     pub fn new(inner: GPIO) -> Self {
         // todo: ensure APB0 clock okay
         Self {
@@ -175,9 +176,11 @@ impl<const P: char, const N: u8> embedded_hal::digital::ErrorType for Pin<P, N, 
 }
 
 impl<const P: char, const N: u8> embedded_hal::digital::blocking::InputPin for Pin<P, N, Input> {
+    #[inline]
     fn is_high(&self) -> Result<bool, Self::Error> {
         Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) != 0)
     }
+    #[inline]
     fn is_low(&self) -> Result<bool, Self::Error> {
         Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) == 0)
     }
@@ -188,12 +191,14 @@ impl<const P: char, const N: u8> embedded_hal::digital::ErrorType for Pin<P, N, 
 }
 
 impl<const P: char, const N: u8> embedded_hal::digital::blocking::OutputPin for Pin<P, N, Output> {
+    #[inline]
     fn set_low(&mut self) -> Result<(), Self::Error> {
         let mut new_data = unsafe { read_volatile(Self::DATA_REG) };
         new_data &= !(1 << N);
         unsafe { write_volatile(Self::DATA_REG, new_data) };
         Ok(())
     }
+    #[inline]
     fn set_high(&mut self) -> Result<(), Self::Error> {
         let mut new_data = unsafe { read_volatile(Self::DATA_REG) };
         new_data |= 1 << N;
@@ -205,9 +210,11 @@ impl<const P: char, const N: u8> embedded_hal::digital::blocking::OutputPin for 
 impl<const P: char, const N: u8> embedded_hal::digital::blocking::StatefulOutputPin
     for Pin<P, N, Output>
 {
+    #[inline]
     fn is_set_high(&self) -> Result<bool, Self::Error> {
         Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) != 0)
     }
+    #[inline]
     fn is_set_low(&self) -> Result<bool, Self::Error> {
         Ok(unsafe { read_volatile(Self::DATA_REG) } & (1 << N) == 0)
     }
