@@ -251,14 +251,25 @@ fn xtask_debug_gdb(gdb_path: &str, gdb_server: &str, env: &Env) {
 fn find_xfel() -> &'static str {
     let mut command = Command::new("xfel");
     command.stdout(Stdio::null());
-    let status = command.status().unwrap();
-    if status.success() {
-        return "xfel";
-    }
-    error!(
-        "xfel not found
+    match command.status() {
+        Ok(status) if status.success() => return "xfel",
+        Ok(status) => match status.code() {
+            Some(code) => {
+                error!("xfel command failed with code {}", code);
+                process::exit(code)
+            }
+            None => error!("xfel command terminated by signal"),
+        },
+        Err(e) if e.kind() == ErrorKind::NotFound => error!(
+            "xfel not found
     install xfel from: https://github.com/xboot/xfel"
-    );
+        ),
+        Err(e) => error!(
+            "I/O error occurred when detecting xfel: {}.
+    Please check your xfel program and try again.",
+            e
+        ),
+    }
     process::exit(1)
 }
 
