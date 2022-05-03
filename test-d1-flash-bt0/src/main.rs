@@ -10,10 +10,15 @@ mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
+mod spi;
 mod time;
 mod uart;
 use crate::ccu::Clocks;
+use crate::gpio::Gpio;
+use crate::jtag::Jtag;
+use crate::spi::Spi;
 use crate::time::U32Ext;
+use crate::uart::{Config, Parity, Serial, StopBits, WordLength};
 use buddy_system_allocator::LockedHeap;
 use core::arch::asm;
 use core::panic::PanicInfo;
@@ -108,10 +113,10 @@ extern "C" fn main() {
             .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
     };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
-    use gpio::Gpio;
-    use jtag::Jtag;
-    use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
     let gpio = Gpio::new(p.GPIO);
 
     // configure jtag interface
@@ -130,9 +135,6 @@ extern "C" fn main() {
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
     let rx = gpio.portb.pb9.into_function_6();
-    let clocks = Clocks {
-        uart_clock: 24_000_000.hz(), // hard coded
-    };
     let config = Config {
         baudrate: 115200.bps(),
         wordlength: WordLength::Eight,
@@ -141,6 +143,13 @@ extern "C" fn main() {
     };
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
+
+    // prepare spi interface
+    let sck = gpio.portc.pc2.into_function_2();
+    let miso = gpio.portc.pc5.into_function_2();
+    let mosi = gpio.portc.pc4.into_function_2();
+    let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
+    drop(spi); // todo: use spi peripheral
 
     println!("OREBOOT");
     println!("Test");
