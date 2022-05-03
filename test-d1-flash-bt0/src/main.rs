@@ -88,9 +88,22 @@ pub static HEAD_DATA: HeadData = HeadData {
 #[link_section = ".text.entry"]
 pub unsafe extern "C" fn start() -> ! {
     asm!(
+        // 1. clear cache and processor states
         "csrw   mie, zero",
         "li     t2, 0x30013",
         "csrs   0x7c2, t2", // MCOR
+        // 2. initialize programming langauge runtime
+        // clear bss segment
+        "la     t0, sbss",
+        "la     t1, ebss",
+        "1:",
+        "bgeu   t0, t1, 1f",
+        "sd     x0, 0(t0)",
+        "addi   t0, t0, 4",
+        "j      1b",
+        "1:",
+        // does not init data segment as BT0 runs in sram
+        // 3. prepare stack
         "la     sp, {stack}",
         "li     t0, {per_hart_stack_size}",
         "add    sp, sp, t0",
@@ -105,8 +118,7 @@ pub unsafe extern "C" fn start() -> ! {
 }
 
 extern "C" fn main() {
-    // init program and peripherals
-    init_bss();
+    // init heap memory
     unsafe {
         SBI_HEAP
             .lock()
@@ -167,19 +179,4 @@ extern "C" fn main() {
 #[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
     loop {}
-}
-
-#[inline]
-fn init_bss() {
-    extern "C" {
-        static mut ebss: u32;
-        static mut sbss: u32;
-        static mut edata: u32;
-        static mut sdata: u32;
-        static sidata: u32;
-    }
-    unsafe {
-        r0::zero_bss(&mut sbss, &mut ebss);
-        r0::init_data(&mut sdata, &mut edata, &sidata);
-    }
 }
