@@ -97,6 +97,7 @@ pub struct dram_parameters {
     pub dram_tpr13: usize,
 }
 
+// taken from SPL
 const DRAM_PARA: dram_parameters = dram_parameters {
     dram_clk: 0x00000318,
     dram_type: 0x00000003,
@@ -133,6 +134,16 @@ fn init_dram(dram_para: dram_parameters) {
                 read_volatile(RES_CAL_CTRL_REG as *mut u32) | 0x100,
             )
         };
+        println!("Rust 🦀 ");
+        unsafe {
+            write_volatile(RES240_CTRL_REG as *mut u32, 0);
+        }
+        println!("Rust 🦀 ");
+        for _ in 0..20_000_000 {}
+    } else {
+        // TODO: gating, calibration
+        let zq_val = unsafe { read_volatile(ZQ_VALUE as *mut u32) };
+        println!("ZQ value = 0x{:#02x}***********", zq_val);
     }
 }
 
