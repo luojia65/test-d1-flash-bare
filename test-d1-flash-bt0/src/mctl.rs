@@ -125,7 +125,7 @@ const DRAM_PARA: dram_parameters = dram_parameters {
     dram_tpr13: 0x34050100,
 };
 
-fn init_dram(dram_para: dram_parameters) {
+fn init_dram(dram_para: dram_parameters) -> usize {
     if dram_para.dram_tpr13 & (1 << 16) > 0 {
         println!("DRAM only have internal ZQ!!");
         unsafe {
@@ -145,9 +145,10 @@ fn init_dram(dram_para: dram_parameters) {
         let zq_val = unsafe { read_volatile(ZQ_VALUE as *mut u32) };
         println!("ZQ value = 0x{:#02x}***********", zq_val);
     }
+    return 0;
 }
 
-pub fn init() {
+pub fn init() -> usize {
     println!("DRAM INIT");
-    init_dram(DRAM_PARA);
+    return init_dram(DRAM_PARA);
 }
