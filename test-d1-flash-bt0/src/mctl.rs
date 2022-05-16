@@ -125,7 +125,31 @@ const DRAM_PARA: dram_parameters = dram_parameters {
     dram_tpr13: 0x34050100,
 };
 
+fn get_pmu_exists() -> bool {
+    return false;
+}
+
+fn dram_vol_set(dram_para: dram_parameters) {
+    let vol = match dram_para.dram_type {
+        2 => 47, // 1.8V
+        3 => 25, // 1.5V
+        _ => 0,
+    };
+    let vol = 25; // XXX
+    let mut reg = unsafe { read_volatile(SYS_LDO_CTRL_REG as *mut u32) };
+    reg &= !(0xff00);
+    reg |= vol << 8;
+    reg &= !(0x200000);
+    unsafe {
+        write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
+    }
+    // TODO
+    // sdelay(1);
+}
+
 fn init_dram(dram_para: dram_parameters) -> usize {
+    // STEP 1: ZQ, gating, calibration and voltage
+    // Test ZQ status
     if dram_para.dram_tpr13 & (1 << 16) > 0 {
         println!("DRAM only have internal ZQ!!");
         unsafe {
@@ -145,6 +169,15 @@ fn init_dram(dram_para: dram_parameters) -> usize {
         let zq_val = unsafe { read_volatile(ZQ_VALUE as *mut u32) };
         println!("ZQ value = 0x{:#02x}***********", zq_val);
     }
+
+    // Set voltage
+    let rc = get_pmu_exists();
+    println!("get_pmu_exist() = {}\n", rc);
+
+    if !rc {
+        dram_vol_set(dram_para);
+    }
+
     return 0;
 }
 
