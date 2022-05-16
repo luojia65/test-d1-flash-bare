@@ -147,6 +147,10 @@ fn dram_vol_set(dram_para: dram_parameters) {
     // sdelay(1);
 }
 
+fn set_ddr_voltage(val: usize) -> usize {
+    val
+}
+
 fn init_dram(dram_para: dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
@@ -176,6 +180,12 @@ fn init_dram(dram_para: dram_parameters) -> usize {
 
     if !rc {
         dram_vol_set(dram_para);
+    } else {
+        if dram_para.dram_type == 2 {
+            set_ddr_voltage(1800);
+        } else if dram_para.dram_type == 3 {
+            set_ddr_voltage(1500);
+        }
     }
 
     return 0;
