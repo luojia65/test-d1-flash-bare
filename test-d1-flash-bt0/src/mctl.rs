@@ -129,20 +129,18 @@ fn get_pmu_exists() -> bool {
     return false;
 }
 
-fn dram_vol_set(dram_para: dram_parameters) {
+unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
     let vol = match dram_para.dram_type {
         2 => 47, // 1.8V
         3 => 25, // 1.5V
         _ => 0,
     };
     let vol = 25; // XXX
-    let mut reg = unsafe { read_volatile(SYS_LDO_CTRL_REG as *mut u32) };
+    let mut reg = read_volatile(SYS_LDO_CTRL_REG as *mut u32);
     reg &= !(0xff00);
     reg |= vol << 8;
     reg &= !(0x200000);
-    unsafe {
-        write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
-    }
+    write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
     // TODO
     // sdelay(1);
 }
@@ -151,26 +149,52 @@ fn set_ddr_voltage(val: usize) -> usize {
     val
 }
 
-fn init_dram(dram_para: dram_parameters) -> usize {
+fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
+    return Err("auto scan dram size failed !");
+}
+
+fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
+    return Err("auto scan dram rank & width failed !");
+}
+
+/* STEP 2 */
+/// This routine determines the SDRAM topology.
+///
+/// It first establishes the number of ranks and the DQ width. Then it scans the
+/// SDRAM address lines to establish the size of each rank. It then updates
+/// `dram_tpr13` to reflect that the sizes are now known: a re-init will not
+/// repeat the autoscan.
+fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str> {
+    if para.dram_tpr13 & (1 << 14) == 0 {
+        auto_scan_dram_rank_width(para)?
+    }
+    if para.dram_tpr13 & (1 << 0) == 0 {
+        auto_scan_dram_size(para)?
+    }
+    if (para.dram_tpr13 & (1 << 15)) == 0 {
+        para.dram_tpr13 |= 0x6003;
+    }
+    Ok(())
+}
+
+/// # Safety
+///
+/// No warranty. Use at own risk. Be lucky to get values from vendor.
+pub unsafe fn init_dram(dram_para: &mut dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
     if dram_para.dram_tpr13 & (1 << 16) > 0 {
         println!("DRAM only have internal ZQ!!");
-        unsafe {
-            write_volatile(
-                RES_CAL_CTRL_REG as *mut u32,
-                read_volatile(RES_CAL_CTRL_REG as *mut u32) | 0x100,
-            )
-        };
-        println!("Rust 🦀 ");
-        unsafe {
-            write_volatile(RES240_CTRL_REG as *mut u32, 0);
-        }
+        write_volatile(
+            RES_CAL_CTRL_REG as *mut u32,
+            read_volatile(RES_CAL_CTRL_REG as *mut u32) | 0x100,
+        );
+        write_volatile(RES240_CTRL_REG as *mut u32, 0);
         println!("Rust 🦀 ");
         for _ in 0..20_000_000 {}
     } else {
         // TODO: gating, calibration
-        let zq_val = unsafe { read_volatile(ZQ_VALUE as *mut u32) };
+        let zq_val = read_volatile(ZQ_VALUE as *mut u32);
         println!("ZQ value = 0x{:#02x}***********", zq_val);
     }
 
@@ -188,10 +212,19 @@ fn init_dram(dram_para: dram_parameters) -> usize {
         }
     }
 
+    // STEP 2: CONFIG
+    // Set SDRAM controller auto config
+    if (dram_para.dram_tpr13 & 0x1) == 0 {
+        if let Err(msg) = auto_scan_dram_config(dram_para) {
+            println!("[ERROR DEBUG] {}", msg);
+            return 0;
+        }
+    }
+
     return 0;
 }
 
 pub fn init() -> usize {
     println!("DRAM INIT");
-    return init_dram(DRAM_PARA);
+    return unsafe { init_dram(&mut DRAM_PARA) };
 }
