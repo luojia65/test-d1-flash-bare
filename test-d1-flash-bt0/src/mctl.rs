@@ -153,7 +153,30 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     return Err("auto scan dram size failed !");
 }
 
+fn mctl_core_init(para: &mut dram_parameters) {}
+
+fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
+    return Ok(());
+}
+
 fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
+    let s1 = para.dram_tpr13;
+    let s2 = para.dram_para1;
+
+    para.dram_para1 = 0x00b000b0;
+    para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
+    para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
+
+    mctl_core_init(para);
+
+    let unknown3 = unsafe { read_volatile(UNKNOWN3 as *mut u32) };
+    if unknown3 & (1 << 20) == 0 {
+        return Ok(());
+    }
+    dqs_gate_detect(para)?;
+
+    para.dram_tpr13 = s1;
+    para.dram_para1 = s2;
     return Err("auto scan dram rank & width failed !");
 }
 
