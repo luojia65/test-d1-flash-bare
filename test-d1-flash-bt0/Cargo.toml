@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-d1-pac = "0.0.18"
+d1-pac = "0.0.22"
 embedded-hal = "1.0.0-alpha.8"
 nb = "1"
 buddy_system_allocator = "0.8.0"
