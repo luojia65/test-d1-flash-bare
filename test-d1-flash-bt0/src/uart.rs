@@ -31,7 +31,7 @@ pub struct Config {
 }
 
 #[allow(unused)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordLength {
     Five,
     Six,
@@ -40,7 +40,7 @@ pub enum WordLength {
 }
 
 #[allow(unused)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Parity {
     None,
     Odd,
@@ -49,7 +49,7 @@ pub enum Parity {
 
 /// Stop Bit configuration parameter for serial.
 #[allow(unused)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StopBits {
     /// 1 stop bit
     One,
@@ -73,10 +73,10 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
-        UART::assert_reset(&ccu);
-        UART::gating_mask(&ccu);
-        UART::deassert_reset(&ccu);
-        UART::gating_pass(&ccu);
+        UART::assert_reset(ccu);
+        UART::gating_mask(ccu);
+        UART::deassert_reset(ccu);
+        UART::gating_pass(ccu);
         // 3. set interrupt configuration
         // on BT0 stage we disable all uart interrupts
         uart.ier().write(|w| w.ptime().disable().rs485_int_en().disable()
@@ -150,8 +150,8 @@ impl<UART: Instance, PINS> Drop for Serial<UART, PINS> {
     #[inline]
     fn drop(&mut self) {
         let ccu = unsafe { &*CCU::ptr() };
-        UART::assert_reset(&ccu);
-        UART::gating_mask(&ccu);
+        UART::assert_reset(ccu);
+        UART::gating_mask(ccu);
     }
 }
 

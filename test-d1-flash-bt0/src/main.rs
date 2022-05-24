@@ -31,6 +31,11 @@ static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
 #[global_allocator]
 static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[link_section = ".head.text"]
 #[export_name = "head_jump"]
@@ -78,6 +83,11 @@ pub static HEAD_DATA: HeadData = HeadData {
     string_pool: [0; 13],
 };
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
@@ -161,13 +171,12 @@ extern "C" fn main() {
             println!("Rust🦀 {}", i);
         }
         for _ in 0..20_000_000 {
-            unsafe { core::arch::asm!("nop") };
+            core::hint::spin_loop();
         }
     }
 }
 
 #[cfg_attr(not(test), panic_handler)]
-#[allow(unused)]
-fn panic(info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
