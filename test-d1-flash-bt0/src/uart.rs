@@ -21,7 +21,6 @@ pub struct Serial<UART: Instance, PINS> {
     inner: UART,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Config {
     pub baudrate: Bps,
@@ -30,7 +29,6 @@ pub struct Config {
     pub stopbits: StopBits,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordLength {
     Five,
@@ -39,7 +37,6 @@ pub enum WordLength {
     Eight,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Parity {
     None,
@@ -48,7 +45,6 @@ pub enum Parity {
 }
 
 /// Stop Bit configuration parameter for serial.
-#[allow(unused)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StopBits {
     /// 1 stop bit

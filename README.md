@@ -4,4 +4,4 @@
 
 这个分支用于开发连接到 Flash 的 SPI 驱动。
 
-官方开发板使用的 Flash 型号为 MX35LF2GE4AD（旺宏电子 2GB NAND Flash），点击[此链接](https://www.mxic.com.tw/Lists/TechDoc/Attachments/10198/MX35LF2GE4AD,%20LLD,%20v0.1.zip)下载官方示例代码。
+官方开发板使用的 Flash 型号为 MX35LF2GE4AD（旺宏电子 2GB NAND Flash），[官网](https://www.mxic.com.tw/en-us/products/NAND-Flash/Serial-NAND-Flash/Pages/spec.aspx?p=MX35LF2GE4AD&m=Serial+NAND&n=PM2794)有用户手册和示例程序。

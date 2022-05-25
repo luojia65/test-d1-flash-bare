@@ -4,26 +4,32 @@
 #![feature(once_cell)]
 #![no_std]
 #![no_main]
+
+use buddy_system_allocator::LockedHeap;
+use core::arch::asm;
+use core::panic::PanicInfo;
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
+
 extern crate alloc;
+
 #[macro_use]
 mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
 mod spi;
+mod spi_flash;
 mod time;
 mod uart;
-use crate::ccu::Clocks;
-use crate::gpio::Gpio;
-use crate::jtag::Jtag;
-use crate::spi::Spi;
-use crate::time::U32Ext;
-use crate::uart::{Config, Parity, Serial, StopBits, WordLength};
-use buddy_system_allocator::LockedHeap;
-use core::arch::asm;
-use core::panic::PanicInfo;
-use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
+
+use ccu::Clocks;
+use gpio::Gpio;
+use jtag::Jtag;
+use spi::Spi;
+use spi_flash::SpiFlash;
+use time::U32Ext;
+use uart::{Config, Parity, Serial, StopBits, WordLength};
 
 const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -171,7 +177,7 @@ extern "C" fn main() {
     let miso = gpio.portc.pc5.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
-    drop(spi); // todo: use spi peripheral
+    let _flash = SpiFlash::from(spi);
 
     println!("OREBOOT");
     println!("Test");
