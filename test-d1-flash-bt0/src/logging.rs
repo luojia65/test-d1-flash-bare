@@ -50,16 +50,18 @@ pub fn _print(args: fmt::Arguments) {
     LOGGER.inner.lock().write_fmt(args).unwrap();
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ({
+    ($($arg:tt)*) => {
         $crate::logging::_print(core::format_args!($($arg)*));
-    });
+    }
 }
 
-#[macro_export(local_inner_macros)]
+#[macro_export]
 macro_rules! println {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::logging::_print(core::format_args!(core::concat!($fmt, "\r\n") $(, $($arg)+)?));
+    () => ($crate::print!("\r\n"));
+    ($($arg:tt)*) => {
+        $crate::logging::_print(core::format_args!($($arg)*));
+        $crate::print!("\r\n");
     }
 }
