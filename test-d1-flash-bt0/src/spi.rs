@@ -24,14 +24,13 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
-        SPI::assert_reset(&ccu);
-        SPI::gating_mask(&ccu);
-        SPI::deassert_reset(&ccu);
-        SPI::gating_pass(&ccu);
+        SPI::assert_reset(ccu);
+        SPI::gating_mask(ccu);
+        SPI::deassert_reset(ccu);
+        SPI::gating_pass(ccu);
         // 3. set interrupt configuration
         // todo
         // 4. calculate and set clock divider
-        drop(clocks);
         // todo
         // 5. additional configurations
         // todo
@@ -56,8 +55,8 @@ impl<SPI: Instance, PINS> Drop for Spi<SPI, PINS> {
     #[inline]
     fn drop(&mut self) {
         let ccu = unsafe { &*CCU::ptr() };
-        SPI::assert_reset(&ccu);
-        SPI::gating_mask(&ccu);
+        SPI::assert_reset(ccu);
+        SPI::gating_mask(ccu);
     }
 }
 

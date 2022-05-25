@@ -22,7 +22,7 @@ pub struct Serial<UART: Instance, PINS> {
 }
 
 #[allow(unused)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Config {
     pub baudrate: Bps,
     pub wordlength: WordLength,
@@ -59,7 +59,6 @@ pub enum StopBits {
 
 impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
     /// Create instance of Uart
-    #[rustfmt::skip]
     #[inline]
     pub fn new(uart: UART, pins: PINS, config: impl Into<Config>, clock: &Clocks) -> Self {
         // 1. unwrap parameters
@@ -79,9 +78,15 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
         UART::gating_pass(ccu);
         // 3. set interrupt configuration
         // on BT0 stage we disable all uart interrupts
-        uart.ier().write(|w| w.ptime().disable().rs485_int_en().disable()
-            .edssi().disable().elsi().disable()
-            .etbei().disable().erbfi().disable());
+        #[rustfmt::skip]
+        uart.ier().write(|w| {
+            w.ptime()       .disable()
+             .rs485_int_en().disable()
+             .edssi()       .disable()
+             .elsi()        .disable()
+             .etbei()       .disable()
+             .erbfi()       .disable()
+        });
         // 4. calculate and set baudrate
         let uart_clk = (clock.uart_clock.0 + 8 * bps) / (16 * bps);
         let (dlh, dll) = ((uart_clk >> 8) as u8, (uart_clk & 0xff) as u8);
@@ -105,30 +110,35 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
             Parity::Odd => (PEN_A::ENABLED, EPS_A::ODD),
             Parity::Even => (PEN_A::ENABLED, EPS_A::EVEN),
         };
-        uart.lcr.modify(|_, w| w
-            .dls().variant(dls)
-            .stop().variant(stop)
-            .pen().variant(pen)
-            .eps().variant(eps)
-            .bc().clear_bit() // todo: break control
+        #[rustfmt::skip]
+        uart.lcr.modify(
+            |_, w| {
+                w.dls() .variant(dls)
+                 .stop().variant(stop)
+                 .pen() .variant(pen)
+                 .eps() .variant(eps)
+                 .bc()  .clear_bit()
+            }, // todo: break control
         );
         // todo: pin configuration
-        uart.mcr.write(|w| w
-            .dtr().deasserted()
-            .rts().deasserted()
-            .loop_().normal()
-            .afce().disabled()
-            .function().uart()
-        );
+        #[rustfmt::skip]
+        uart.mcr.write(|w| {
+            w.dtr()     .deasserted()
+             .rts()     .deasserted()
+             .loop_()   .normal()
+             .afce()    .disabled()
+             .function().uart()
+        });
         // todo: fifo configuration
-        uart.fcr().write(|w| w
-            .fifoe().set_bit()
-            .rfifor().set_bit()
-            .xfifor().set_bit()
-            .dmam().mode_0()
-            .tft().half_full()
-            .rt().two_less_than_full()
-        );
+        #[rustfmt::skip]
+        uart.fcr().write(|w| {
+            w.fifoe() .set_bit()
+             .rfifor().set_bit()
+             .xfifor().set_bit()
+             .dmam()  .mode_0()
+             .tft()   .half_full()
+             .rt()    .two_less_than_full()
+        });
         // 6. return the instance
         Serial { pins, inner: uart }
     }
