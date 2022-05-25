@@ -8,7 +8,7 @@ use crate::gpio::{
 };
 use d1_pac::{
     spi0::{
-        spi_gcr::{EN_A, MODE_A},
+        spi_gcr::{EN_A, MODE_A, TP_EN_A},
         spi_tcr::{CPHA_A, CPOL_A, SPOL_A, SS_LEVEL_A, SS_OWNER_A, SS_SEL_A},
         RegisterBlock,
     },
@@ -37,20 +37,37 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
-        SPI::deassert_reset(ccu);
-        SPI::gating_pass(ccu);
-        // 不必使用 CCU 重置，因为 SPI 有自己的软件重置
-        spi.spi_gcr.write(|w| w.srst().set_bit());
+        // SPI::assert_reset(ccu);
+        // SPI::gating_mask(ccu);
+        // SPI::deassert_reset(ccu);
+        // SPI::gating_pass(ccu);
+        #[rustfmt::skip]
+        ccu.spi0_clk.write(|w| w
+            .clk_src_sel().hosc()
+            .clk_gating() .set_bit()
+        );
+        #[rustfmt::skip]
+        ccu.spi_bgr.write(|w| w
+            .spi0_rst()   .deassert()
+            .spi0_gating().set_bit()
+        );
         // 3. set interrupt configuration
         // on BT0 stage we disable all spi interrupts, by setting the gcr.sret
         // 4. calculate and set clock divider
         // todo
         // 5. additional configurations
+        // see [xboot](https://github.com/xboot/xboot/blob/master/src/arch/riscv64/mach-d1/driver/spi-d1.c)
         #[rustfmt::skip]
         spi.spi_gcr.write(|w| w
-            .mode().variant(MODE_A::MASTER)
-            .en()  .variant(EN_A::ENABLE)
+            .srst() .variant(true)
+            .tp_en().variant(TP_EN_A::STOP_WHEN_FULL)
+            .mode() .variant(MODE_A::MASTER)
+            .en()   .variant(EN_A::ENABLE)
         );
+        // wait soft reset complete (gcr.srst)
+        while spi.spi_gcr.read().srst().bit_is_set() {
+            core::hint::spin_loop();
+        }
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
             .ss_level().variant(SS_LEVEL_A::HIGH)
@@ -60,6 +77,20 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             .cpol()    .variant(CPOL_A::LOW)
             .cpha()    .variant(CPHA_A::P1)
         );
+        #[rustfmt::skip]
+        spi.spi_fcr.write(|w| w
+            .tf_rst().set_bit()
+            .rf_rst().set_bit()
+        );
+        // wait fifo reset complete (fcr.tf_rst|fcr.rf_rst)
+        loop {
+            let fcr = spi.spi_fcr.read();
+            if fcr.tf_rst().bit_is_clear() && fcr.rf_rst().bit_is_clear() {
+                break;
+            } else {
+                core::hint::spin_loop();
+            }
+        }
         // 6. return the instance
         Spi {
             inner: spi,
