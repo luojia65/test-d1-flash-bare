@@ -117,14 +117,15 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
     pub fn transfer(&self, mut buf: &mut [u8]) {
         while !buf.is_empty() {
             let (head, tail) = buf.split_at_mut(buf.len().min(64));
+            buf = tail;
+
             self.write_txbuf(head);
             for b in head {
                 while self.inner.spi_fsr.read().rf_cnt() == 0 {
                     core::hint::spin_loop();
                 }
-                *b = unsafe { self.inner.spi_rxd.as_ptr().cast::<u8>().read_volatile() };
+                *b = self.inner.spi_rxd_8().read().bits();
             }
-            buf = tail;
         }
     }
 
@@ -147,7 +148,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         self.inner.spi_mtc.write(|w| w.mwtc().variant(len));
         self.inner.spi_bcc.write(|w| w.stc().variant(len));
         for b in buf {
-            unsafe { self.inner.spi_txd.as_ptr().cast::<u8>().write_volatile(*b) };
+            self.inner.spi_txd_8().write(|w| unsafe { w.bits(*b) });
         }
         self.inner
             .spi_tcr

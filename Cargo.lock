@@ -129,8 +129,7 @@ dependencies = [
 [[package]]
 name = "d1-pac"
 version = "0.0.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "303c23bbe2325cb4f95fe83ea50725086994e8bd828f970767f96bc132a7af8d"
+source = "git+https://github.com/duskmoon314/aw-pac.git?rev=412a5a4#412a5a418ec858bdbd65b5b4fd42b510e630832d"
 dependencies = [
  "bare-metal",
  "riscv",

@@ -182,16 +182,25 @@ extern "C" fn main() {
 
     println!("Flash ID = {:#x}", flash.read_id());
 
-    let mut mem = [0u8; 4096];
-    let reader = flash.read_from(0);
-    let _flash = reader.read(&mut mem);
+    let mut mem = [0u8; 256];
+    flash.copy_into(0, &mut mem);
+    let mut data = unsafe {
+        core::slice::from_raw_parts(
+            mem.as_ptr() as *const u32,
+            mem.len() / core::mem::size_of::<u32>(),
+        )
+    };
+    while let [a, b, c, d, tail @ ..] = data {
+        println!("{a:8x} {b:8x} {c:8x} {d:8x}");
+        data = tail;
+    }
 
     println!("OREBOOT");
     println!("Test");
     loop {
-        // for i in 1..=3 {
-        //     println!("Rust🦀 {}", i);
-        // }
+        for i in 1..=3 {
+            println!("Rust🦀 {}", i);
+        }
         for _ in 0..20_000_000 {
             core::hint::spin_loop();
         }

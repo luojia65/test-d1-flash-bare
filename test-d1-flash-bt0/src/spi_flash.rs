@@ -7,19 +7,16 @@ mod consts {
     pub(super) const CMD_GET_FEATURE: u8 = 0x0f;
     pub(super) const CMD_READ_ID: u8 = 0x9f;
     pub(super) const CMD_READ_GAGE: u8 = 0x13;
+    pub(super) const CMD_READ_CACHE: u8 = 0x03;
     pub(super) const FEAT_STATUS: u8 = 0xc0;
     pub(super) const LEN_PAGE_BITS: u32 = 11;
-    pub(super) const LEN_PAGE_MASK: u32 = (1 << LEN_PAGE_BITS) - 1;
+    pub(super) const LEN_PAGE: u32 = 1 << LEN_PAGE_BITS;
+    pub(super) const LEN_PAGE_MASK: u32 = LEN_PAGE - 1;
 }
 
 use consts::*;
 
 pub struct SpiFlash<SPI: Instance, PINS>(Spi<SPI, PINS>);
-
-pub struct SpiFlashReader<SPI: Instance, PINS> {
-    inner: SpiFlash<SPI, PINS>,
-    offset: usize,
-}
 
 impl<SPI: Instance, PINS> From<Spi<SPI, PINS>> for SpiFlash<SPI, PINS> {
     fn from(inner: Spi<SPI, PINS>) -> Self {
@@ -33,55 +30,59 @@ impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
         let mut buf = [CMD_READ_ID, DUMMY];
 
         self.wait();
-        self.0.cs_low();
-        self.0.transfer(&mut buf[..1]);
-        buf[0] = DUMMY;
-        self.0.transfer(&mut buf[..2]);
-        self.0.cs_high();
+        self.dialog(|spi| {
+            spi.transfer(&mut buf[..1]);
+            spi.transfer(&mut buf[..2]);
+        });
 
         u16::from_be_bytes([buf[0], buf[1]])
     }
 
     /// 准备从 `base` 地址开始顺序读取。
-    pub fn read_from(self, base: u32) -> SpiFlashReader<SPI, PINS> {
-        let mut buf = u32::to_be_bytes(base >> LEN_PAGE_BITS);
-        buf[0] = CMD_READ_GAGE;
+    pub fn copy_into(self, mut base: u32, mut buf: &mut [u8]) {
+        println!("copy {} bytes from {base:#x}", buf.len());
+        while !buf.is_empty() {
+            let mut cmd = u32::to_be_bytes(base >> LEN_PAGE_BITS);
+            cmd[0] = CMD_READ_GAGE;
+            self.wait();
+            self.dialog(|spi| spi.transfer(&mut cmd));
 
-        self.wait();
-        self.0.cs_low();
-        self.0.transfer(&mut buf[..4]);
-        self.0.cs_high();
+            let ca = base & LEN_PAGE_MASK;
+            let (head, tail) = buf.split_at_mut(buf.len().min((LEN_PAGE - ca) as _));
+            base += head.len() as u32;
+            buf = tail;
 
-        SpiFlashReader {
-            inner: self,
-            offset: (base & LEN_PAGE_MASK) as _,
+            cmd = [CMD_READ_CACHE, (ca >> 8) as u8, ca as u8, DUMMY];
+            self.wait();
+            self.dialog(|spi| {
+                spi.transfer(&mut cmd);
+                spi.transfer(head);
+            });
         }
     }
 }
 
 impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
-    fn get_feature(&self, key: u8) -> u8 {
+    #[inline]
+    fn dialog(&self, f: impl FnOnce(&Spi<SPI, PINS>) -> ()) {
         self.0.cs_low();
-        let mut buf = [CMD_GET_FEATURE, key];
-        self.0.transfer(&mut buf[..2]);
-        buf[0] = DUMMY;
-        self.0.transfer(&mut buf[..1]);
+        f(&self.0);
         self.0.cs_high();
+    }
+
+    fn get_feature(&self, key: u8) -> u8 {
+        let mut buf = [CMD_GET_FEATURE, key];
+
+        self.dialog(|spi| {
+            spi.transfer(&mut buf[..2]);
+            spi.transfer(&mut buf[..1]);
+        });
+
         buf[0]
     }
 
     fn wait(&self) {
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
-            core::hint::spin_loop();
-        }
-    }
-}
-
-impl<SPI: Instance, PINS> SpiFlashReader<SPI, PINS> {
-    pub fn read(self, buf: &mut [u8]) -> SpiFlash<SPI, PINS> {
-        self.inner.wait();
-        println!("read from flash by spi flash reader");
-        loop {
             core::hint::spin_loop();
         }
     }
