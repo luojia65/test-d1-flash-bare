@@ -151,15 +151,36 @@ fn set_ddr_voltage(val: usize) -> usize {
     val
 }
 
+// p32 memory mapping
+// MSI + MEMC: 0x0310_2000 - 0x0330_1fff
 const DRAM_MASTER_CTL1: usize = 0x3102020;
 const DRAM_MASTER_CTL2: usize = 0x3102024;
 const DRAM_MASTER_CTL3: usize = 0x3102028;
 
-unsafe fn dram_disable_all_master() {
-    write_volatile(DRAM_MASTER_CTL1 as *mut usize, 1);
-    write_volatile(DRAM_MASTER_CTL2 as *mut usize, 0);
-    write_volatile(DRAM_MASTER_CTL3 as *mut usize, 0);
+unsafe fn dram_enable_all_master() {
+    println!("enable_master 1");
+    write_volatile(DRAM_MASTER_CTL1 as *mut isize, -1);
+    println!("enable_master 2");
+    write_volatile(DRAM_MASTER_CTL2 as *mut isize, 0xff);
+    println!("enable_master 3");
+    write_volatile(DRAM_MASTER_CTL3 as *mut isize, 0xffff);
     // sdelay(10); // TODO
+    for _ in 0..10_000 {
+        core::arch::asm!("nop")
+    }
+}
+
+unsafe fn dram_disable_all_master() {
+    println!("disable_master 1");
+    write_volatile(DRAM_MASTER_CTL1 as *mut isize, 1);
+    println!("disable_master 2");
+    write_volatile(DRAM_MASTER_CTL2 as *mut isize, 0);
+    println!("disable_master 3");
+    write_volatile(DRAM_MASTER_CTL3 as *mut isize, 0);
+    // sdelay(10); // TODO
+    for _ in 0..10_000 {
+        core::arch::asm!("nop")
+    }
 }
 
 const UNKNOWN9: usize = 0x2001000;
@@ -232,15 +253,24 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
     val |= 0x08000000;
     write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    for _ in 0..10_000 {
+        core::arch::asm!("nop")
+    }
     // sdelay(10); // TODO
 
+    println!("check1");
     // set ddr pll clock
     // NOTE: This passes an additional `0` in the original, but it's unused
     let val = ccm_set_pll_ddr_clk(para);
     para.dram_clk = val >> 1;
     // sdelay(100); // TODO
+    for _ in 0..100_000 {
+        core::arch::asm!("nop")
+    }
+    println!("disable_all_master");
     dram_disable_all_master();
 
+    println!("SDRAM reset");
     // release sdram reset
     let val = read_volatile(CLK_GATE_RST as *mut u32);
     write_volatile(CLK_GATE_RST as *mut u32, val | 0x00010000);
@@ -253,6 +283,7 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     let val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
     write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val | 0x40000000);
 
+    println!("check2");
     // turn on sdram clock gate
     let val = read_volatile(CLK_GATE_RST as *mut u32);
     write_volatile(CLK_GATE_RST as *mut u32, val | 0x0000001); // (1<<0);
@@ -289,7 +320,9 @@ unsafe fn mctl_vrefzq_init(para: &mut dram_parameters) {
 // settings.
 fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     unsafe {
+        println!("sys_init");
         mctl_sys_init(para);
+        println!("vrefzq_init");
         mctl_vrefzq_init(para);
     }
     // mctl_com_init(para);
