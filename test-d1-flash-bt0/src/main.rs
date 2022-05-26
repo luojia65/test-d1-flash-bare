@@ -174,9 +174,10 @@ extern "C" fn main() {
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
+    let scs = gpio.portc.pc3.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
-    let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
+    let spi = Spi::new(p.SPI0, (sck, scs, miso, mosi), &clocks);
     let flash = SpiFlash::from(spi);
 
     println!("flash id = {:#x}", flash.read_id());

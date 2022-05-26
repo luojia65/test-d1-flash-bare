@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 
 use crate::ccu::{Clocks, Gating, Reset};
 use crate::gpio::{
-    portc::{PC2, PC4, PC5},
+    portc::{PC2, PC3, PC4, PC5},
     Function,
 };
 use d1_pac::{
@@ -117,14 +117,12 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
     pub fn transfer(&self, mut buf: &mut [u8]) {
         while !buf.is_empty() {
             let (head, tail) = buf.split_at_mut(buf.len().min(64));
-            println!("spi write {} bytes", head.len());
             self.write_txbuf(head);
             for b in head {
                 while self.inner.spi_fsr.read().rf_cnt() == 0 {
                     core::hint::spin_loop();
                 }
-                *b = self.inner.spi_txd.read().bits() as u8;
-                println!("spi read {:#x}", *b);
+                *b = unsafe { self.inner.spi_rxd.as_ptr().cast::<u8>().read_volatile() };
             }
             buf = tail;
         }
@@ -149,7 +147,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         self.inner.spi_mtc.write(|w| w.mwtc().variant(len));
         self.inner.spi_bcc.write(|w| w.stc().variant(len));
         for b in buf {
-            self.inner.spi_txd.write(|w| unsafe { w.bits(*b as _) });
+            unsafe { self.inner.spi_txd.as_ptr().cast::<u8>().write_volatile(*b) };
         }
         self.inner
             .spi_tcr
@@ -174,6 +172,14 @@ impl Instance for d1_pac::SPI0 {}
 
 pub trait Pins<SPI> {}
 
-// parameter order: sck, miso, mosi
+// parameter order: sck, scs, miso, mosi
 
-impl Pins<SPI0> for (PC2<Function<2>>, PC5<Function<2>>, PC4<Function<2>>) {}
+impl Pins<SPI0>
+    for (
+        PC2<Function<2>>,
+        PC3<Function<2>>,
+        PC5<Function<2>>,
+        PC4<Function<2>>,
+    )
+{
+}
