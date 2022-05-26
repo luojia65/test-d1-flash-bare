@@ -184,11 +184,13 @@ unsafe fn dram_disable_all_master() {
     }
 }
 
-const UNKNOWN9: usize = 0x2001000;
-const UNKNOWN10: usize = 0x2001010;
-const MBUS_CTL: usize = 0x2001540;
-const DRAM_CLK_GATING_CTL: usize = 0x2001800;
-const CLK_GATE_RST: usize = 0x200180c;
+// p49 ff
+const CCU: usize = 0x2001000;
+const PLL_CPU_CTRL: usize = CCU + 0x0000;
+const PLL_DDR_CTRL: usize = CCU + 0x0010;
+const MBUS_CLK: usize = CCU + 0x0540;
+const DRAM_CLK: usize = CCU + 0x0800;
+const DRAM_BGR: usize = CCU + 0x080c;
 
 // Purpose of this routine seems to be to initialize the PLL driving
 // the MBUS and sdram.
@@ -202,21 +204,21 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     println!("clk {} / n {}", clk, n);
 
     // set VCO clock divider
-    let mut val = read_volatile(UNKNOWN10 as *mut usize);
+    let mut val = read_volatile(PLL_DDR_CTRL as *mut usize);
     val &= 0xfff800fc; // clear dividers
     val |= (n - 1) << 8; // set PLL division
     val |= 0xc0000000; // enable PLL and LDO
-    write_volatile(UNKNOWN10 as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut usize, val);
 
     // Restart PLL locking
     val &= 0xdfffffff; // disbable lock
     val |= 0xc0000000; // enable PLL and LDO
-    write_volatile(UNKNOWN10 as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut usize, val);
     val |= 0xe0000000; // re-enable lock
-    write_volatile(UNKNOWN10 as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut usize, val);
 
     // wait for PLL to lock
-    while read_volatile(UNKNOWN10 as *mut usize) == 0 {}
+    while read_volatile(PLL_DDR_CTRL as *mut usize) == 0 {}
 
     // sdelay(20); // TODO
     for _ in 0..20_000 {
@@ -224,14 +226,14 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     }
 
     // enable PLL output
-    let val = read_volatile(UNKNOWN9 as *mut usize);
-    write_volatile(UNKNOWN9 as *mut usize, val | 0x08000000);
+    let val = read_volatile(PLL_CPU_CTRL as *mut usize);
+    write_volatile(PLL_CPU_CTRL as *mut usize, val | 0x08000000);
 
     // turn clock gate on
-    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    let mut val = read_volatile(DRAM_CLK as *mut u32);
     val &= 0xfcfffcfc; // select DDR clk source, n=1, m=1
     val |= 0x80000000; // turn clock on
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    write_volatile(DRAM_CLK as *mut u32, val);
 
     return n * 24;
 }
@@ -241,29 +243,29 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     // TODO: What is s1 for?
     // s1 = 0x02001000
 
-    // MBUS_CTL: usize = 0x2001540;
-    // DRAM_CLK_GATING_CTL: usize = 0x2001800;
-    // CLK_GATE_RST: usize = 0x200180c;
+    // MBUS_CLK: usize = 0x2001540;
+    // DRAM_CLK: usize = 0x2001800;
+    // DRAM_BGR: usize = 0x200180c;
 
     // assert MBUS reset
-    let val = read_volatile(MBUS_CTL as *mut usize);
-    write_volatile(MBUS_CTL as *mut usize, val & 0xbfffffff);
+    let val = read_volatile(MBUS_CLK as *mut usize);
+    write_volatile(MBUS_CLK as *mut usize, val & 0xbfffffff);
 
     // turn off sdram clock gate, assert sdram reset
-    let mut val = read_volatile(CLK_GATE_RST as *mut u32);
+    let mut val = read_volatile(DRAM_BGR as *mut u32);
     val &= 0xfffffffe;
-    write_volatile(CLK_GATE_RST as *mut u32, val);
+    write_volatile(DRAM_BGR as *mut u32, val);
     val &= 0xfffefffe;
-    write_volatile(CLK_GATE_RST as *mut u32, val);
+    write_volatile(DRAM_BGR as *mut u32, val);
 
     // turn off bit 30 [??]
-    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val & 0xbfffffff);
+    let mut val = read_volatile(DRAM_CLK as *mut u32);
+    write_volatile(DRAM_CLK as *mut u32, val & 0xbfffffff);
     // and toggle dram clock gating off + trigger update
     val &= 0x7fffffff;
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    write_volatile(DRAM_CLK as *mut u32, val);
     val |= 0x08000000;
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    write_volatile(DRAM_CLK as *mut u32, val);
     for _ in 0..10_000 {
         core::arch::asm!("nop")
     }
@@ -284,28 +286,28 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
 
     println!("SDRAM reset");
     // release sdram reset
-    let val = read_volatile(CLK_GATE_RST as *mut u32);
-    write_volatile(CLK_GATE_RST as *mut u32, val | 0x00010000);
+    let val = read_volatile(DRAM_BGR as *mut u32);
+    write_volatile(DRAM_BGR as *mut u32, val | 0x00010000);
 
     // release MBUS reset
-    let val = read_volatile(MBUS_CTL as *mut usize);
-    write_volatile(MBUS_CTL as *mut usize, val | 0x40000000);
+    let val = read_volatile(MBUS_CLK as *mut usize);
+    write_volatile(MBUS_CLK as *mut usize, val | 0x40000000);
 
     // turn bit 30 back on [?]
-    let val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val | 0x40000000);
+    let val = read_volatile(DRAM_CLK as *mut u32);
+    write_volatile(DRAM_CLK as *mut u32, val | 0x40000000);
 
     println!("SDRAM clock gate ON");
     // turn on sdram clock gate
-    let val = read_volatile(CLK_GATE_RST as *mut u32);
-    write_volatile(CLK_GATE_RST as *mut u32, val | 0x0000001); // (1<<0);
+    let val = read_volatile(DRAM_BGR as *mut u32);
+    write_volatile(DRAM_BGR as *mut u32, val | 0x0000001); // (1<<0);
 
     // turn dram clock gate on, trigger sdr clock update
-    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    let mut val = read_volatile(DRAM_CLK as *mut u32);
     val |= 0x80000000;
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    write_volatile(DRAM_CLK as *mut u32, val);
     val |= 0x88000000;
-    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    write_volatile(DRAM_CLK as *mut u32, val);
     // sdelay(5); // TODO
 
     // mCTL clock enable
