@@ -1,5 +1,7 @@
 use core::ptr::{read_volatile, write_volatile};
 
+const RAM_BASE: usize = 0x40000000;
+
 /**
  * D1 manual p152 3.4 System Configuration
  *
@@ -149,11 +151,190 @@ fn set_ddr_voltage(val: usize) -> usize {
     val
 }
 
-fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
-    return Err("auto scan dram size failed !");
+const DRAM_MASTER_CTL1: usize = 0x3102020;
+const DRAM_MASTER_CTL2: usize = 0x3102024;
+const DRAM_MASTER_CTL3: usize = 0x3102028;
+
+unsafe fn dram_disable_all_master() {
+    write_volatile(DRAM_MASTER_CTL1 as *mut usize, 1);
+    write_volatile(DRAM_MASTER_CTL2 as *mut usize, 0);
+    write_volatile(DRAM_MASTER_CTL3 as *mut usize, 0);
+    // sdelay(10); // TODO
 }
 
-fn mctl_core_init(para: &mut dram_parameters) {}
+const UNKNOWN9: usize = 0x2001000;
+const UNKNOWN10: usize = 0x2001010;
+const MBUS_CTL: usize = 0x2001540;
+const DRAM_CLK_GATING_CTL: usize = 0x2001800;
+const CLK_GATE_RST: usize = 0x200180c;
+
+// Purpose of this routine seems to be to initialize the PLL driving
+// the MBUS and sdram.
+unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
+    let clk = match para.dram_tpr13 & (1 << 6) {
+        0 => para.dram_clk,
+        _ => para.dram_tpr9,
+    };
+    let n = (clk * 2) / 24;
+
+    // set VCO clock divider
+    let mut val = read_volatile(UNKNOWN10 as *mut usize);
+    val &= 0xfff800fc; // clear dividers
+    val |= (n - 1) << 8; // set PLL division
+    val |= 0xc0000000; // enable PLL and LDO
+    write_volatile(UNKNOWN10 as *mut usize, val);
+
+    // Restart PLL locking
+    val &= 0xdfffffff; // disbable lock
+    val |= 0xc0000000; // enable PLL and LDO
+    write_volatile(UNKNOWN10 as *mut usize, val);
+    val |= 0xe0000000; // re-enable lock
+    write_volatile(UNKNOWN10 as *mut usize, val);
+
+    // wait for PLL to lock
+    while read_volatile(UNKNOWN10 as *mut usize) == 0 {}
+
+    // sdelay(20); // TODO
+
+    // enable PLL output
+    let val = read_volatile(UNKNOWN9 as *mut usize);
+    write_volatile(UNKNOWN9 as *mut usize, val | 0x08000000);
+
+    // turn clock gate on
+    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    val &= 0xfcfffcfc; // select DDR clk source, n=1, m=1
+    val |= 0x80000000; // turn clock on
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    return n * 24;
+}
+
+// TODO: verify this
+unsafe fn mctl_sys_init(para: &mut dram_parameters) {
+    // TODO: What is s1 for?
+    // s1 = 0x02001000
+
+    // assert MBUS reset
+    let val = read_volatile(MBUS_CTL as *mut usize) & 0xbfffffff;
+    write_volatile(MBUS_CTL as *mut usize, val);
+
+    // turn off sdram clock gate, assert sdram reset
+    let mut val = read_volatile(CLK_GATE_RST as *mut u32);
+    val &= 0xfffffffe;
+    write_volatile(CLK_GATE_RST as *mut u32, val);
+    val &= 0xfffefffe;
+    write_volatile(CLK_GATE_RST as *mut u32, val);
+
+    // turn off bit 30 [??]
+    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val & 0xbfffffff);
+    // and toggle dram clock gating off + trigger update
+    val &= 0x7fffffff;
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    val |= 0x08000000;
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    // sdelay(10); // TODO
+
+    // set ddr pll clock
+    // NOTE: This passes an additional `0` in the original, but it's unused
+    let val = ccm_set_pll_ddr_clk(para);
+    para.dram_clk = val >> 1;
+    // sdelay(100); // TODO
+    dram_disable_all_master();
+
+    // release sdram reset
+    let val = read_volatile(CLK_GATE_RST as *mut u32);
+    write_volatile(CLK_GATE_RST as *mut u32, val | 0x00010000);
+
+    // release MBUS reset
+    let val = read_volatile(MBUS_CTL as *mut usize);
+    write_volatile(MBUS_CTL as *mut usize, val | 0x40000000);
+
+    // turn bit 30 back on [?]
+    let val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val | 0x40000000);
+
+    // turn on sdram clock gate
+    let val = read_volatile(CLK_GATE_RST as *mut u32);
+    write_volatile(CLK_GATE_RST as *mut u32, val | 0x0000001); // (1<<0);
+
+    // turn dram clock gate on, trigger sdr clock update
+    let mut val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
+    val |= 0x80000000;
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    val |= 0x88000000;
+    write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+    // sdelay(5); // TODO
+
+    // mCTL clock enable
+    write_volatile(MCTL_CLK_EN as *mut u32, 0x00008000);
+    // sdelay(10); // TODO
+}
+
+// Set the Vref mode for the controller
+unsafe fn mctl_vrefzq_init(para: &mut dram_parameters) {
+    if (para.dram_tpr13 & (1 << 17)) == 0 {
+        let val = read_volatile(IOCVR_LOW as *mut u32) & 0x80808080; // IOCVR0
+        write_volatile(IOCVR_LOW as *mut u32, val | para.dram_tpr5 as u32);
+
+        if (para.dram_tpr13 & (1 << 16)) == 0 {
+            let val = read_volatile(IOCVR_HIGH as *mut u32) & 0xffffff80; // IOCVR1
+            write_volatile(IOCVR_HIGH as *mut u32, val | para.dram_tpr6 as u32 & 0x7f);
+        }
+    }
+}
+
+// Perform an init of the controller. This is actually done 3 times. The first
+// time to establish the number of ranks and DQ width. The second time to
+// establish the actual ram size. The third time is final one, with the final
+// settings.
+fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
+    unsafe {
+        mctl_sys_init(para);
+        mctl_vrefzq_init(para);
+    }
+    // mctl_com_init(para);
+    // mctl_phy_ac_remapping(para);
+    // auto_set_timing_para(para);
+    // return mctl_channel_init(0, para);
+    return Ok(());
+    // return Err("DRAM initialisation error : 0"); // TODO
+}
+
+fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
+    mctl_core_init(para)?; // TODO: Why is this called all the time?
+
+    let maxrank = match para.dram_para2 & 0xf000 {
+        0 => 1,
+        _ => 2,
+    };
+    let mc_work_mode = MC_WORK_MODE_RANK0_LOW;
+    let offs = 0;
+
+    println!("DRAM write test");
+    // write test pattern
+    unsafe {
+        for i in 0..64 {
+            let ptr: u32 = RAM_BASE as u32 + 4 * i;
+            write_volatile(
+                (RAM_BASE + ptr as usize) as *mut u32,
+                if i & 1 > 0 { ptr } else { !ptr },
+            );
+        }
+    }
+
+    println!("DRAM read test");
+    unsafe {
+        for i in 0..64 {
+            let ptr: u32 = RAM_BASE as u32 + 4 * i;
+            let r = read_volatile((RAM_BASE + ptr as usize) as *mut u32);
+            println!("{:#x}", r);
+        }
+    }
+
+    // TODO: do the rest
+
+    return Err("auto scan dram size failed !");
+}
 
 fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
     return Ok(());
@@ -167,7 +348,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
-    mctl_core_init(para);
+    mctl_core_init(para)?; // TODO: Why is this called all the time?
 
     let unknown3 = unsafe { read_volatile(UNKNOWN3 as *mut u32) };
     if unknown3 & (1 << 20) == 0 {
@@ -188,13 +369,20 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 /// `dram_tpr13` to reflect that the sizes are now known: a re-init will not
 /// repeat the autoscan.
 fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str> {
+    println!("DRAM 14");
     if para.dram_tpr13 & (1 << 14) == 0 {
+        println!("DRAM 14 no");
         auto_scan_dram_rank_width(para)?
     }
+    println!("DRAM 0");
     if para.dram_tpr13 & (1 << 0) == 0 {
+        println!("DRAM 0 no");
+        // This is not run with current hardcoded params
         auto_scan_dram_size(para)?
     }
+    println!("DRAM 15");
     if (para.dram_tpr13 & (1 << 15)) == 0 {
+        println!("DRAM 15 no; adjusting");
         para.dram_tpr13 |= 0x6003;
     }
     Ok(())
@@ -203,10 +391,10 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
 /// # Safety
 ///
 /// No warranty. Use at own risk. Be lucky to get values from vendor.
-pub unsafe fn init_dram(dram_para: &mut dram_parameters) -> usize {
+pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
-    if dram_para.dram_tpr13 & (1 << 16) > 0 {
+    if para.dram_tpr13 & (1 << 16) > 0 {
         println!("DRAM only have internal ZQ!!");
         write_volatile(
             RES_CAL_CTRL_REG as *mut u32,
@@ -226,23 +414,46 @@ pub unsafe fn init_dram(dram_para: &mut dram_parameters) -> usize {
     println!("get_pmu_exist() = {}\n", rc);
 
     if !rc {
-        dram_vol_set(dram_para);
+        dram_vol_set(para);
     } else {
-        if dram_para.dram_type == 2 {
+        if para.dram_type == 2 {
             set_ddr_voltage(1800);
-        } else if dram_para.dram_type == 3 {
+        } else if para.dram_type == 3 {
             set_ddr_voltage(1500);
         }
     }
 
     // STEP 2: CONFIG
     // Set SDRAM controller auto config
-    if (dram_para.dram_tpr13 & 0x1) == 0 {
-        if let Err(msg) = auto_scan_dram_config(dram_para) {
+    if (para.dram_tpr13 & 0x1) == 0 {
+        if let Err(msg) = auto_scan_dram_config(para) {
             println!("[ERROR DEBUG] {}", msg);
             return 0;
         }
     }
+
+    // Print header message (too late)
+    println!("DRAM BOOT DRIVE INFO: {}", "V0.24");
+    println!("DRAM CLK = {} MHz", para.dram_clk);
+    println!("DRAM Type = {} (2:DDR2,3:DDR3)", para.dram_type);
+    if (para.dram_odt_en & 0x1) == 0 {
+        println!("DRAMC read ODT  off.");
+    } else {
+        println!("DRAMC ZQ value: 0x{:x}", para.dram_zq);
+    }
+
+    // report ODT
+    if (para.dram_mr1 & 0x44) == 0 {
+        println!("DRAM ODT off.");
+    } else {
+        println!("DRAM ODT value: 0x{:x}.", para.dram_mr1);
+    }
+
+    // Init core, final run
+    if let Err(msg) = mctl_core_init(para) {
+        println!("[ERROR DEBUG] {}", msg);
+        return 0;
+    };
 
     return 0;
 }
