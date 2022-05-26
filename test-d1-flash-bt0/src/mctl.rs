@@ -193,11 +193,13 @@ const CLK_GATE_RST: usize = 0x200180c;
 // Purpose of this routine seems to be to initialize the PLL driving
 // the MBUS and sdram.
 unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
+    // FIXME: This is a bit weird, especially the scaling down and up etc
     let clk = match para.dram_tpr13 & (1 << 6) {
         0 => para.dram_clk,
         _ => para.dram_tpr9,
     };
-    let n = (clk * 2) / 24;
+    let n = 66; // (clk * 2) / 24; // FIXME: Why is this always 0?
+    println!("clk {} / n {}", clk, n);
 
     // set VCO clock divider
     let mut val = read_volatile(UNKNOWN10 as *mut usize);
@@ -217,6 +219,9 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     while read_volatile(UNKNOWN10 as *mut usize) == 0 {}
 
     // sdelay(20); // TODO
+    for _ in 0..20_000 {
+        core::arch::asm!("nop")
+    }
 
     // enable PLL output
     let val = read_volatile(UNKNOWN9 as *mut usize);
@@ -227,6 +232,7 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     val &= 0xfcfffcfc; // select DDR clk source, n=1, m=1
     val |= 0x80000000; // turn clock on
     write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val);
+
     return n * 24;
 }
 
@@ -235,9 +241,13 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     // TODO: What is s1 for?
     // s1 = 0x02001000
 
+    // MBUS_CTL: usize = 0x2001540;
+    // DRAM_CLK_GATING_CTL: usize = 0x2001800;
+    // CLK_GATE_RST: usize = 0x200180c;
+
     // assert MBUS reset
-    let val = read_volatile(MBUS_CTL as *mut usize) & 0xbfffffff;
-    write_volatile(MBUS_CTL as *mut usize, val);
+    let val = read_volatile(MBUS_CTL as *mut usize);
+    write_volatile(MBUS_CTL as *mut usize, val & 0xbfffffff);
 
     // turn off sdram clock gate, assert sdram reset
     let mut val = read_volatile(CLK_GATE_RST as *mut u32);
@@ -259,11 +269,12 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     }
     // sdelay(10); // TODO
 
-    println!("check1");
+    println!("ccm_set_pll_ddr_clk");
     // set ddr pll clock
     // NOTE: This passes an additional `0` in the original, but it's unused
     let val = ccm_set_pll_ddr_clk(para);
     para.dram_clk = val >> 1;
+    println!("ddr_clk {}", val >> 1);
     // sdelay(100); // TODO
     for _ in 0..100_000 {
         core::arch::asm!("nop")
@@ -284,7 +295,7 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     let val = read_volatile(DRAM_CLK_GATING_CTL as *mut u32);
     write_volatile(DRAM_CLK_GATING_CTL as *mut u32, val | 0x40000000);
 
-    println!("check2");
+    println!("SDRAM clock gate ON");
     // turn on sdram clock gate
     let val = read_volatile(CLK_GATE_RST as *mut u32);
     write_volatile(CLK_GATE_RST as *mut u32, val | 0x0000001); // (1<<0);
