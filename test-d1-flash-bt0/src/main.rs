@@ -27,7 +27,7 @@ use ccu::Clocks;
 use gpio::Gpio;
 use jtag::Jtag;
 use spi::Spi;
-use spi_flash::SpiFlash;
+use spi_flash::SpiNand;
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
@@ -178,7 +178,7 @@ extern "C" fn main() {
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
-    let flash = SpiFlash::from(spi);
+    let flash = SpiNand::from(spi);
 
     println!("Flash ID = {:#x}", flash.read_id());
 

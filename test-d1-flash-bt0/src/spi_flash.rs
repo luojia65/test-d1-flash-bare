@@ -16,16 +16,17 @@ mod consts {
 
 use consts::*;
 
-pub struct SpiFlash<SPI: Instance, PINS>(Spi<SPI, PINS>);
+/// NAND Flash with SPI.
+pub struct SpiNand<SPI: Instance, PINS>(Spi<SPI, PINS>);
 
-impl<SPI: Instance, PINS> From<Spi<SPI, PINS>> for SpiFlash<SPI, PINS> {
+impl<SPI: Instance, PINS> From<Spi<SPI, PINS>> for SpiNand<SPI, PINS> {
     fn from(inner: Spi<SPI, PINS>) -> Self {
         Self(inner)
     }
 }
 
-impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
-    /// 读硬件 ID。
+impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+    /// Reads hardware ID.
     pub fn read_id(&self) -> u16 {
         let mut buf = [CMD_READ_ID, DUMMY];
 
@@ -38,7 +39,7 @@ impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
         u16::from_be_bytes([buf[0], buf[1]])
     }
 
-    /// 准备从 `base` 地址开始顺序读取。
+    /// Copies bytes from `base` address to `buf`.
     pub fn copy_into(self, mut base: u32, mut buf: &mut [u8]) {
         println!("copy {} bytes from {base:#x}", buf.len());
         while !buf.is_empty() {
@@ -62,7 +63,8 @@ impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
     }
 }
 
-impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
+impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+    /// 片选限定的一次通信过程。
     #[inline]
     fn dialog(&self, f: impl FnOnce(&Spi<SPI, PINS>) -> ()) {
         self.0.cs_low();
@@ -81,6 +83,7 @@ impl<SPI: Instance, PINS> SpiFlash<SPI, PINS> {
         buf[0]
     }
 
+    /// 等待忙状态结束。
     fn wait(&self) {
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
             core::hint::spin_loop();
