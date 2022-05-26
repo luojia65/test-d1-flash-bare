@@ -175,6 +175,7 @@ unsafe fn dram_disable_all_master() {
     write_volatile(DRAM_MASTER_CTL1 as *mut isize, 1);
     println!("disable_master 2");
     write_volatile(DRAM_MASTER_CTL2 as *mut isize, 0);
+    // FIXME: HANGING HERE - we do not see the third message
     println!("disable_master 3");
     write_volatile(DRAM_MASTER_CTL3 as *mut isize, 0);
     // sdelay(10); // TODO
