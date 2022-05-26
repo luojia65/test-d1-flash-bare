@@ -90,30 +90,30 @@ const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
 
 #[repr(C)]
 pub struct dram_parameters {
-    pub dram_clk: usize,
-    pub dram_type: usize,
-    pub dram_zq: usize,
-    pub dram_odt_en: usize,
-    pub dram_para1: usize,
-    pub dram_para2: usize,
-    pub dram_mr0: usize,
-    pub dram_mr1: usize,
-    pub dram_mr2: usize,
-    pub dram_mr3: usize,
-    pub dram_tpr0: usize,
-    pub dram_tpr1: usize,
-    pub dram_tpr2: usize,
-    pub dram_tpr3: usize,
-    pub dram_tpr4: usize,
-    pub dram_tpr5: usize,
-    pub dram_tpr6: usize,
-    pub dram_tpr7: usize,
-    pub dram_tpr8: usize,
-    pub dram_tpr9: usize,
-    pub dram_tpr10: usize,
-    pub dram_tpr11: usize,
-    pub dram_tpr12: usize,
-    pub dram_tpr13: usize,
+    pub dram_clk: u32,
+    pub dram_type: u32,
+    pub dram_zq: u32,
+    pub dram_odt_en: u32,
+    pub dram_para1: u32,
+    pub dram_para2: u32,
+    pub dram_mr0: u32,
+    pub dram_mr1: u32,
+    pub dram_mr2: u32,
+    pub dram_mr3: u32,
+    pub dram_tpr0: u32,
+    pub dram_tpr1: u32,
+    pub dram_tpr2: u32,
+    pub dram_tpr3: u32,
+    pub dram_tpr4: u32,
+    pub dram_tpr5: u32,
+    pub dram_tpr6: u32,
+    pub dram_tpr7: u32,
+    pub dram_tpr8: u32,
+    pub dram_tpr9: u32,
+    pub dram_tpr10: u32,
+    pub dram_tpr11: u32,
+    pub dram_tpr12: u32,
+    pub dram_tpr13: u32,
 }
 
 // taken from SPL
@@ -162,6 +162,9 @@ unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
     write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
     // TODO
     // sdelay(1);
+    for _ in 0..1_000 {
+        core::arch::asm!("nop")
+    }
 }
 
 fn set_ddr_voltage(val: usize) -> usize {
@@ -169,12 +172,9 @@ fn set_ddr_voltage(val: usize) -> usize {
 }
 
 unsafe fn dram_enable_all_master() {
-    println!("enable_master 1");
-    write_volatile(DRAM_MASTER_CTL1 as *mut isize, -1);
-    println!("enable_master 2");
-    write_volatile(DRAM_MASTER_CTL2 as *mut isize, 0xff);
-    println!("enable_master 3");
-    write_volatile(DRAM_MASTER_CTL3 as *mut isize, 0xffff);
+    write_volatile(DRAM_MASTER_CTL1 as *mut i16, -1);
+    write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0xff);
+    write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0xffff);
     // sdelay(10); // TODO
     for _ in 0..10_000 {
         core::arch::asm!("nop")
@@ -182,13 +182,9 @@ unsafe fn dram_enable_all_master() {
 }
 
 unsafe fn dram_disable_all_master() {
-    println!("disable_master 1");
-    write_volatile(DRAM_MASTER_CTL1 as *mut isize, 1);
-    println!("disable_master 2");
-    write_volatile(DRAM_MASTER_CTL2 as *mut isize, 0);
-    // FIXME: HANGING HERE - we do not see the third message
-    println!("disable_master 3");
-    write_volatile(DRAM_MASTER_CTL3 as *mut isize, 0);
+    write_volatile(DRAM_MASTER_CTL1 as *mut i16, 1);
+    write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0);
+    write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0);
     // sdelay(10); // TODO
     for _ in 0..10_000 {
         core::arch::asm!("nop")
@@ -197,7 +193,7 @@ unsafe fn dram_disable_all_master() {
 
 // Purpose of this routine seems to be to initialize the PLL driving
 // the MBUS and sdram.
-unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
+unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
     // FIXME: This is a bit weird, especially the scaling down and up etc
     let clk = match para.dram_tpr13 & (1 << 6) {
         0 => para.dram_clk,
@@ -207,21 +203,21 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     println!("clk {} / n {}", clk, n);
 
     // set VCO clock divider
-    let mut val = read_volatile(PLL_DDR_CTRL as *mut usize);
+    let mut val = read_volatile(PLL_DDR_CTRL as *mut u32);
     val &= 0xfff800fc; // clear dividers
     val |= (n - 1) << 8; // set PLL division
     val |= 0xc0000000; // enable PLL and LDO
-    write_volatile(PLL_DDR_CTRL as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut u32, val);
 
     // Restart PLL locking
     val &= 0xdfffffff; // disbable lock
     val |= 0xc0000000; // enable PLL and LDO
-    write_volatile(PLL_DDR_CTRL as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut u32, val);
     val |= 0xe0000000; // re-enable lock
-    write_volatile(PLL_DDR_CTRL as *mut usize, val);
+    write_volatile(PLL_DDR_CTRL as *mut u32, val);
 
     // wait for PLL to lock
-    while read_volatile(PLL_DDR_CTRL as *mut usize) == 0 {}
+    while read_volatile(PLL_DDR_CTRL as *mut u32) == 0 {}
 
     // sdelay(20); // TODO
     for _ in 0..20_000 {
@@ -229,8 +225,8 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> usize {
     }
 
     // enable PLL output
-    let val = read_volatile(PLL_CPU_CTRL as *mut usize);
-    write_volatile(PLL_CPU_CTRL as *mut usize, val | 0x08000000);
+    let val = read_volatile(PLL_CPU_CTRL as *mut u32);
+    write_volatile(PLL_CPU_CTRL as *mut u32, val | 0x08000000);
 
     // turn clock gate on
     let mut val = read_volatile(DRAM_CLK as *mut u32);
@@ -246,13 +242,9 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     // TODO: What is s1 for?
     // s1 = 0x02001000
 
-    // MBUS_CLK: usize = 0x2001540;
-    // DRAM_CLK: usize = 0x2001800;
-    // DRAM_BGR: usize = 0x200180c;
-
     // assert MBUS reset
-    let val = read_volatile(MBUS_CLK as *mut usize);
-    write_volatile(MBUS_CLK as *mut usize, val & 0xbfffffff);
+    let val = read_volatile(MBUS_CLK as *mut u32);
+    write_volatile(MBUS_CLK as *mut u32, val & 0xbfffffff);
 
     // turn off sdram clock gate, assert sdram reset
     let mut val = read_volatile(DRAM_BGR as *mut u32);
@@ -269,10 +261,10 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_CLK as *mut u32, val);
     val |= 0x08000000;
     write_volatile(DRAM_CLK as *mut u32, val);
+    // sdelay(10); // TODO
     for _ in 0..10_000 {
         core::arch::asm!("nop")
     }
-    // sdelay(10); // TODO
 
     println!("ccm_set_pll_ddr_clk");
     // set ddr pll clock
@@ -293,8 +285,8 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_BGR as *mut u32, val | 0x00010000);
 
     // release MBUS reset
-    let val = read_volatile(MBUS_CLK as *mut usize);
-    write_volatile(MBUS_CLK as *mut usize, val | 0x40000000);
+    let val = read_volatile(MBUS_CLK as *mut u32);
+    write_volatile(MBUS_CLK as *mut u32, val | 0x40000000);
 
     // turn bit 30 back on [?]
     let val = read_volatile(DRAM_CLK as *mut u32);
@@ -312,10 +304,16 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     val |= 0x88000000;
     write_volatile(DRAM_CLK as *mut u32, val);
     // sdelay(5); // TODO
+    for _ in 0..5_000 {
+        core::arch::asm!("nop")
+    }
 
     // mCTL clock enable
     write_volatile(MCTL_CLK_EN as *mut u32, 0x00008000);
     // sdelay(10); // TODO
+    for _ in 0..10_000 {
+        core::arch::asm!("nop")
+    }
 }
 
 // Set the Vref mode for the controller
@@ -366,7 +364,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         for i in 0..64 {
             let ptr: u32 = RAM_BASE as u32 + 4 * i;
             write_volatile(
-                (RAM_BASE + ptr as usize) as *mut u32,
+                (RAM_BASE as u32 + ptr) as *mut u32,
                 if i & 1 > 0 { ptr } else { !ptr },
             );
         }
@@ -376,7 +374,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     unsafe {
         for i in 0..64 {
             let ptr: u32 = RAM_BASE as u32 + 4 * i;
-            let r = read_volatile((RAM_BASE + ptr as usize) as *mut u32);
+            let r = read_volatile((RAM_BASE as u32 + ptr) as *mut u32);
             println!("{:#x}", r);
         }
     }
