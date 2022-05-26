@@ -2,6 +2,14 @@ use core::ptr::{read_volatile, write_volatile};
 
 const RAM_BASE: usize = 0x40000000;
 
+// p49 ff
+const CCU: usize = 0x0200_1000;
+const PLL_CPU_CTRL: usize = CCU + 0x0000;
+const PLL_DDR_CTRL: usize = CCU + 0x0010;
+const MBUS_CLK: usize = CCU + 0x0540;
+const DRAM_CLK: usize = CCU + 0x0800;
+const DRAM_BGR: usize = CCU + 0x080c;
+
 /**
  * D1 manual p152 3.4 System Configuration
  *
@@ -18,7 +26,7 @@ const RAM_BASE: usize = 0x40000000;
  * | RESCAL_STATUS_REG   | 0x016C | Resistor Calibration Status Register     |
  */
 
-const SYS_CFG: usize = 0x03000000; // 0x0300)0000 - 0x0300_0FFF
+const SYS_CFG: usize = 0x0300_0000; // 0x0300_0000 - 0x0300_0FFF
 const VER_REG: usize = SYS_CFG + 0x0024;
 const EMAC_EPHY_CLK_REG0: usize = SYS_CFG + 0x0030;
 const SYS_LDO_CTRL_REG: usize = SYS_CFG + 0x0150;
@@ -29,47 +37,56 @@ const RES_CAL_STATUS_REG: usize = SYS_CFG + 0x016c;
 const ZQ_VALUE: usize = SYS_CFG + 0x0172;
 const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
 
-const FOO_BASE: usize = 0x7010000; // TODO: What do we call this?
+const FOO_BASE: usize = 0x0701_0000; // TODO: What do we call this?
 const ANALOG_SYS_PWROFF_GATING_REG: usize = FOO_BASE + 0x0254;
 
+// p32 memory mapping
+// MSI + MEMC: 0x0310_2000 - 0x0330_1fff
 // NOTE: MSI shares the bus clock with CE, DMAC, IOMMU and CPU_SYS; p 38
 // TODO: Define *_BASE?
-const MSI_MEMC_BASE: usize = 0x3102000; // p32 0x0310_2000 - 0x0330_1FFF
+const MSI_MEMC_BASE: usize = 0x0310_2000; // p32 0x0310_2000 - 0x0330_1FFF
 const MC_WORK_MODE_RANK0_LOW: usize = MSI_MEMC_BASE;
 const MC_WORK_MODE_RANK0_HIGH: usize = MSI_MEMC_BASE + 0x0004;
-const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x100000;
-const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x100004;
 const UNKNOWN1: usize = MSI_MEMC_BASE + 0x0008; // 0x3102008
 const UNKNOWN7: usize = MSI_MEMC_BASE + 0x000c; // 0x310200c
 const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 
-// TODO:
-// 0x3102200
-// 0x3102210
-// 0x3102214
-// 0x3102230
-// 0x3102234
-// 0x3102240
-// 0x3102244
-// 0x3102260
-// 0x3102264
-// 0x3102290
-// 0x3102294
-// 0x3102470
-// 0x3102474
-// 0x31031c0
-// 0x31031c8
-// 0x31031d0
+const DRAM_MASTER_CTL1: usize = MSI_MEMC_BASE + 0x0020;
+const DRAM_MASTER_CTL2: usize = MSI_MEMC_BASE + 0x0024;
+const DRAM_MASTER_CTL3: usize = MSI_MEMC_BASE + 0x0028;
+
 const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
 const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
-                                                // DATX0IOCR x + 4 * size
-                                                // DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
+
+// DATX0IOCR x + 4 * size
+// DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
 const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
 const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
 const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
+
+// TODO: *_BASE ?
+const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
+const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
+// TODO:
+// 0x0310_2200
+// 0x0310_2210
+// 0x0310_2214
+// 0x0310_2230
+// 0x0310_2234
+// 0x0310_2240
+// 0x0310_2244
+// 0x0310_2260
+// 0x0310_2264
+// 0x0310_2290
+// 0x0310_2294
+// 0x0310_2470
+// 0x0310_2474
+// 0x0310_31c0
+// 0x0310_31c8
+// 0x0310_31d0
 
 #[repr(C)]
 pub struct dram_parameters {
@@ -151,12 +168,6 @@ fn set_ddr_voltage(val: usize) -> usize {
     val
 }
 
-// p32 memory mapping
-// MSI + MEMC: 0x0310_2000 - 0x0330_1fff
-const DRAM_MASTER_CTL1: usize = 0x3102020;
-const DRAM_MASTER_CTL2: usize = 0x3102024;
-const DRAM_MASTER_CTL3: usize = 0x3102028;
-
 unsafe fn dram_enable_all_master() {
     println!("enable_master 1");
     write_volatile(DRAM_MASTER_CTL1 as *mut isize, -1);
@@ -183,14 +194,6 @@ unsafe fn dram_disable_all_master() {
         core::arch::asm!("nop")
     }
 }
-
-// p49 ff
-const CCU: usize = 0x2001000;
-const PLL_CPU_CTRL: usize = CCU + 0x0000;
-const PLL_DDR_CTRL: usize = CCU + 0x0010;
-const MBUS_CLK: usize = CCU + 0x0540;
-const DRAM_CLK: usize = CCU + 0x0800;
-const DRAM_BGR: usize = CCU + 0x080c;
 
 // Purpose of this routine seems to be to initialize the PLL driving
 // the MBUS and sdram.
