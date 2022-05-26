@@ -179,7 +179,7 @@ extern "C" fn main() {
     let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
     let flash = SpiFlash::from(spi);
 
-    println!("flash status = {:#x}", flash.check_status());
+    println!("flash id = {:#x}", flash.read_id());
     println!("OREBOOT");
     println!("Test");
     loop {
