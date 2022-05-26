@@ -177,14 +177,15 @@ extern "C" fn main() {
     let miso = gpio.portc.pc5.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
-    let _flash = SpiFlash::from(spi);
+    let flash = SpiFlash::from(spi);
 
+    println!("flash status = {:#x}", flash.check_status());
     println!("OREBOOT");
     println!("Test");
     loop {
-        for i in 1..=3 {
-            println!("Rust🦀 {}", i);
-        }
+        // for i in 1..=3 {
+        //     println!("Rust🦀 {}", i);
+        // }
         for _ in 0..20_000_000 {
             core::hint::spin_loop();
         }

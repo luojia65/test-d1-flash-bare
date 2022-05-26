@@ -32,31 +32,27 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
     where
         PINS: Pins<SPI>,
     {
+        // see [xboot](https://github.com/xboot/xboot/blob/master/src/arch/riscv64/mach-d1/driver/spi-d1.c)
         // 1. unwrap parameters
         // todo
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
-        // SPI::assert_reset(ccu);
-        // SPI::gating_mask(ccu);
-        // SPI::deassert_reset(ccu);
-        // SPI::gating_pass(ccu);
+        // 配置时钟源和分频
         #[rustfmt::skip]
         ccu.spi0_clk.write(|w| w
-            .clk_src_sel().hosc()
+            .clk_src_sel().pll_peri_1x()
+            .factor_n()   .n1()
+            .factor_m()   .variant(6 - 1)
             .clk_gating() .set_bit()
         );
+        // 断开接地，连接时钟
         #[rustfmt::skip]
         ccu.spi_bgr.write(|w| w
             .spi0_rst()   .deassert()
             .spi0_gating().set_bit()
         );
-        // 3. set interrupt configuration
-        // on BT0 stage we disable all spi interrupts, by setting the gcr.sret
-        // 4. calculate and set clock divider
-        // todo
-        // 5. additional configurations
-        // see [xboot](https://github.com/xboot/xboot/blob/master/src/arch/riscv64/mach-d1/driver/spi-d1.c)
+        // 3. 软重置，清空 FIFO
         #[rustfmt::skip]
         spi.spi_gcr.write(|w| w
             .srst() .variant(true)
@@ -68,15 +64,6 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         while spi.spi_gcr.read().srst().bit_is_set() {
             core::hint::spin_loop();
         }
-        #[rustfmt::skip]
-        spi.spi_tcr.write(|w| w
-            .ss_level().variant(SS_LEVEL_A::HIGH)
-            .ss_owner().variant(SS_OWNER_A::SOFTWARE)
-            .ss_sel()  .variant(SS_SEL_A::SS0)
-            .spol()    .variant(SPOL_A::LOW)
-            .cpol()    .variant(CPOL_A::LOW)
-            .cpha()    .variant(CPHA_A::P1)
-        );
         #[rustfmt::skip]
         spi.spi_fcr.write(|w| w
             .tf_rst().set_bit()
@@ -91,7 +78,16 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
                 core::hint::spin_loop();
             }
         }
-        // 6. return the instance
+        // 4. 配置工作模式
+        #[rustfmt::skip]
+        spi.spi_tcr.write(|w| w
+            .ss_level().variant(SS_LEVEL_A::HIGH)
+            .ss_owner().variant(SS_OWNER_A::SOFTWARE)
+            .ss_sel()  .variant(SS_SEL_A::SS0)
+            .spol()    .variant(SPOL_A::LOW)
+            .cpol()    .variant(CPOL_A::LOW)
+            .cpha()    .variant(CPHA_A::P1)
+        );
         Spi {
             inner: spi,
             pins,
@@ -117,19 +113,21 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         })
     }
 
-    /// 读一字节
-    pub fn read_byte(&self) -> u8 {
-        todo!()
-    }
-
-    /// 写一字节
-    pub fn write_byte(&self) -> u8 {
-        todo!()
-    }
-
-    /// 插入空周期等待数据
-    pub fn insert_dummy_cycle(&self) -> u8 {
-        todo!()
+    /// 收发
+    pub fn transfer(&self, mut buf: &mut [u8]) {
+        while !buf.is_empty() {
+            let (head, tail) = buf.split_at_mut(buf.len().min(64));
+            println!("spi write {} bytes", head.len());
+            self.write_txbuf(head);
+            for b in head {
+                while self.inner.spi_fsr.read().rf_cnt() == 0 {
+                    core::hint::spin_loop();
+                }
+                *b = self.inner.spi_txd.read().bits() as u8;
+                println!("spi read {:#x}", *b);
+            }
+            buf = tail;
+        }
     }
 
     /// Close and release peripheral
@@ -141,6 +139,21 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             stub: _, // spi is closed via Drop trait of stub
         } = self;
         (inner, pins)
+    }
+}
+
+impl<SPI: Instance, PINS> Spi<SPI, PINS> {
+    fn write_txbuf(&self, buf: &[u8]) {
+        let len = buf.len() as u32;
+        self.inner.spi_mbc.write(|w| w.mbc().variant(len));
+        self.inner.spi_mtc.write(|w| w.mwtc().variant(len));
+        self.inner.spi_bcc.write(|w| w.stc().variant(len));
+        for b in buf {
+            self.inner.spi_txd.write(|w| unsafe { w.bits(*b as _) });
+        }
+        self.inner
+            .spi_tcr
+            .modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
     }
 }
 
