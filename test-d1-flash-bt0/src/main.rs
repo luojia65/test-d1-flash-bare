@@ -175,12 +175,17 @@ extern "C" fn main() {
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
     let scs = gpio.portc.pc3.into_function_2();
-    let miso = gpio.portc.pc5.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
-    let spi = Spi::new(p.SPI0, (sck, scs, miso, mosi), &clocks);
+    let miso = gpio.portc.pc5.into_function_2();
+    let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
     let flash = SpiFlash::from(spi);
 
-    println!("flash id = {:#x}", flash.read_id());
+    println!("Flash ID = {:#x}", flash.read_id());
+
+    let mut mem = [0u8; 4096];
+    let reader = flash.read_from(0);
+    let _flash = reader.read(&mut mem);
+
     println!("OREBOOT");
     println!("Test");
     loop {
@@ -194,6 +199,9 @@ extern "C" fn main() {
 }
 
 #[cfg_attr(not(test), panic_handler)]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+fn panic(info: &PanicInfo) -> ! {
+    println!("{info}");
+    loop {
+        core::hint::spin_loop();
+    }
 }

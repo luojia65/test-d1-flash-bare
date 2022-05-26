@@ -178,8 +178,8 @@ impl Pins<SPI0>
     for (
         PC2<Function<2>>,
         PC3<Function<2>>,
-        PC5<Function<2>>,
         PC4<Function<2>>,
+        PC5<Function<2>>,
     )
 {
 }
