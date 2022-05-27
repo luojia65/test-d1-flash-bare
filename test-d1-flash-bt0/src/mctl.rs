@@ -172,7 +172,7 @@ fn set_ddr_voltage(val: usize) -> usize {
 }
 
 unsafe fn dram_enable_all_master() {
-    write_volatile(DRAM_MASTER_CTL1 as *mut i16, -1);
+    write_volatile(DRAM_MASTER_CTL1 as *mut u32, 0xffffffff);
     write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0xff);
     write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0xffff);
     // sdelay(10); // TODO
@@ -182,7 +182,7 @@ unsafe fn dram_enable_all_master() {
 }
 
 unsafe fn dram_disable_all_master() {
-    write_volatile(DRAM_MASTER_CTL1 as *mut i16, 1);
+    write_volatile(DRAM_MASTER_CTL1 as *mut u32, 1);
     write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0);
     write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0);
     // sdelay(10); // TODO
