@@ -1,53 +1,48 @@
 //! Log system for BT0
 //!
 //! todo: make module `log` crate comptaible
-use crate::uart;
-use alloc::boxed::Box;
+use crate::gpio::{
+    portb::{PB8, PB9},
+    Function,
+};
+use crate::uart::Serial;
 use core::fmt;
-use core::lazy::OnceCell;
+use d1_pac::UART0;
 use embedded_hal::serial::nb::Write;
 use nb::block;
-use spin::Mutex;
+use spin::{Mutex, Once};
 
-static LOGGER: LockedLogger = LockedLogger {
-    inner: Mutex::new(EmbeddedHalLogger {
-        write: OnceCell::new(),
-    }),
-};
+static LOGGER: Once<LockedLogger> = Once::new();
+
+type S = Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>;
 
 struct LockedLogger {
-    inner: Mutex<EmbeddedHalLogger>,
+    inner: Mutex<S>,
 }
 
-struct EmbeddedHalLogger {
-    write: OnceCell<Box<dyn Write<u8, Error = uart::Error> + Send>>,
-}
-
-impl fmt::Write for EmbeddedHalLogger {
+impl fmt::Write for S {
     #[inline]
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        if let Some(serial) = self.write.get_mut() {
-            for byte in s.as_bytes() {
-                block!(serial.write(*byte)).unwrap();
-            }
-            block!(serial.flush()).unwrap();
+        for byte in s.as_bytes() {
+            block!(self.write(*byte)).unwrap();
         }
+        block!(self.flush()).unwrap();
         Ok(())
     }
 }
 
 #[inline]
-pub fn set_logger<T: Write<u8, Error = uart::Error> + Send + 'static>(logger: T) {
-    let lock = LOGGER.inner.lock();
-    lock.write.set(Box::new(logger)).ok();
-    drop(lock);
+pub fn set_logger(serial: S) {
+    LOGGER.call_once(|| LockedLogger {
+        inner: Mutex::new(serial),
+    });
 }
 
 #[inline]
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use fmt::Write;
-    LOGGER.inner.lock().write_fmt(args).unwrap();
+    LOGGER.wait().inner.lock().write_fmt(args).unwrap();
 }
 
 #[macro_export]
