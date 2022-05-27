@@ -3,7 +3,6 @@
 mod consts {
     #![allow(unused_variables)]
 
-    pub(super) const DUMMY: u8 = 0xff;
     pub(super) const CMD_GET_FEATURE: u8 = 0x0f;
     pub(super) const CMD_READ_ID: u8 = 0x9f;
     pub(super) const CMD_READ_GAGE: u8 = 0x13;
@@ -27,16 +26,13 @@ impl<SPI: Instance, PINS> From<Spi<SPI, PINS>> for SpiNand<SPI, PINS> {
 
 impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     /// Reads hardware ID.
-    pub fn read_id(&self) -> u16 {
-        let mut buf = [CMD_READ_ID, DUMMY];
+    pub fn read_id(&self) -> [u8; 3] {
+        let mut buf = [0u8; 3];
 
         self.wait();
-        self.dialog(|spi| {
-            spi.transfer(&mut buf[..1]);
-            spi.transfer(&mut buf[..2]);
-        });
+        self.0.transfer([CMD_READ_ID], 1, &mut buf);
 
-        u16::from_be_bytes([buf[0], buf[1]])
+        buf
     }
 
     /// Copies bytes from `base` address to `buf`.
@@ -46,41 +42,32 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
             let mut cmd = u32::to_be_bytes(base >> LEN_PAGE_BITS);
             cmd[0] = CMD_READ_GAGE;
             self.wait();
-            self.dialog(|spi| spi.transfer(&mut cmd));
+            self.0.transfer(cmd, 0, []);
 
             let ca = base & LEN_PAGE_MASK;
             let (head, tail) = buf.split_at_mut(buf.len().min((LEN_PAGE - ca) as _));
             base += head.len() as u32;
             buf = tail;
 
-            cmd = [CMD_READ_CACHE, (ca >> 8) as u8, ca as u8, DUMMY];
+            let mut cmd = u32::to_be_bytes(ca);
+            cmd[1] = CMD_READ_CACHE;
             self.wait();
-            self.dialog(|spi| {
-                spi.transfer(&mut cmd);
-                spi.transfer(head);
-            });
+            self.0.transfer(&cmd[1..], 1, head);
         }
     }
 }
 
 impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
-    /// 片选限定的一次通信过程。
-    #[inline]
-    fn dialog(&self, f: impl FnOnce(&Spi<SPI, PINS>) -> ()) {
-        self.0.cs_low();
-        f(&self.0);
-        self.0.cs_high();
-    }
-
     fn get_feature(&self, key: u8) -> u8 {
-        let mut buf = [CMD_GET_FEATURE, key];
+        let mut feature = 0u8;
 
-        self.dialog(|spi| {
-            spi.transfer(&mut buf[..2]);
-            spi.transfer(&mut buf[..1]);
-        });
+        self.0.transfer(
+            [CMD_GET_FEATURE, key],
+            0,
+            core::slice::from_mut(&mut feature),
+        );
 
-        buf[0]
+        feature
     }
 
     /// 等待忙状态结束。

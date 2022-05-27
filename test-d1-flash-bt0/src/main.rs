@@ -180,7 +180,7 @@ extern "C" fn main() {
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
     let flash = SpiNand::from(spi);
 
-    println!("Flash ID = {:#x}", flash.read_id());
+    println!("Flash ID = {:x?}", flash.read_id());
 
     let mut mem = [0u8; 256];
     flash.copy_into(0, &mut mem);
@@ -198,9 +198,9 @@ extern "C" fn main() {
     println!("OREBOOT");
     println!("Test");
     loop {
-        for i in 1..=3 {
-            println!("Rust🦀 {}", i);
-        }
+        // for i in 1..=3 {
+        //     println!("Rust🦀 {}", i);
+        // }
         for _ in 0..20_000_000 {
             core::hint::spin_loop();
         }

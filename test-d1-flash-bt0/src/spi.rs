@@ -9,7 +9,7 @@ use crate::gpio::{
 use d1_pac::{
     spi0::{
         spi_gcr::{EN_A, MODE_A, TP_EN_A},
-        spi_tcr::{CPHA_A, CPOL_A, SPOL_A, SS_LEVEL_A, SS_OWNER_A, SS_SEL_A},
+        spi_tcr::{CPHA_A, CPOL_A, SPOL_A, SS_OWNER_A, SS_SEL_A},
         RegisterBlock,
     },
     CCU, SPI0,
@@ -81,8 +81,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 4. 配置工作模式
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
-            .ss_level().variant(SS_LEVEL_A::HIGH)
-            .ss_owner().variant(SS_OWNER_A::SOFTWARE)
+            .ss_owner().variant(SS_OWNER_A::SPI_CONTROLLER)
             .ss_sel()  .variant(SS_SEL_A::SS0)
             .spol()    .variant(SPOL_A::LOW)
             .cpol()    .variant(CPOL_A::LOW)
@@ -95,38 +94,47 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         }
     }
 
-    /// 拉低片选使能读写
-    pub fn cs_low(&self) {
-        self.inner.spi_tcr.modify(|r, w| {
-            unsafe { w.bits(r.bits()) }
-                .ss_level()
-                .variant(SS_LEVEL_A::LOW)
-        })
-    }
-
-    /// 拉高片选结束读写
-    pub fn cs_high(&self) {
-        self.inner.spi_tcr.modify(|r, w| {
-            unsafe { w.bits(r.bits()) }
-                .ss_level()
-                .variant(SS_LEVEL_A::HIGH)
-        })
-    }
-
     /// 收发
-    pub fn transfer(&self, mut buf: &mut [u8]) {
-        while !buf.is_empty() {
-            let (head, tail) = buf.split_at_mut(buf.len().min(64));
-            buf = tail;
+    pub fn transfer(&self, mosi: impl AsRef<[u8]>, dummy: usize, mut miso: impl AsMut<[u8]>) {
+        let spi = &self.inner;
+        let x = mosi.as_ref();
+        let r = miso.as_mut();
 
-            self.write_txbuf(head);
-            for b in head {
-                while self.inner.spi_fsr.read().rf_cnt() == 0 {
-                    core::hint::spin_loop();
-                }
-                *b = self.inner.spi_rxd_8().read().bits();
+        let lx = x.len() as u32;
+        let ld = dummy as u32;
+        let lr = r.len() as u32;
+
+        #[rustfmt::skip]
+        { // 传输配置
+        spi.spi_mbc.write(|w| w.mbc ().variant(lx + ld + lr));
+        spi.spi_mtc.write(|w| w.mwtc().variant(lx));
+        spi.spi_bcc.write(|w| w.stc ().variant(lx)
+                                       .dbc ().variant(ld as _));
+        spi.spi_tcr.modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
+        };
+        // 发送
+        for b in x {
+            while spi.spi_fsr.read().tf_cnt().bits() >= 64 {
+                core::hint::spin_loop();
             }
+            spi.spi_txd_8().write(|w| unsafe { w.bits(*b) });
         }
+        // 跳过不需要的输入
+        for _ in 0..lx + ld {
+            while spi.spi_fsr.read().rf_cnt().bits() == 0 {
+                core::hint::spin_loop();
+            }
+            let _ = spi.spi_rxd_8().read();
+        }
+        // 接收
+        for b in r {
+            while spi.spi_fsr.read().rf_cnt().bits() == 0 {
+                core::hint::spin_loop();
+            }
+            *b = spi.spi_rxd_8().read().bits();
+        }
+        // 确认传输已结束
+        assert!(spi.spi_tcr.read().xch().bit_is_clear());
     }
 
     /// Close and release peripheral
@@ -138,21 +146,6 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             stub: _, // spi is closed via Drop trait of stub
         } = self;
         (inner, pins)
-    }
-}
-
-impl<SPI: Instance, PINS> Spi<SPI, PINS> {
-    fn write_txbuf(&self, buf: &[u8]) {
-        let len = buf.len() as u32;
-        self.inner.spi_mbc.write(|w| w.mbc().variant(len));
-        self.inner.spi_mtc.write(|w| w.mwtc().variant(len));
-        self.inner.spi_bcc.write(|w| w.stc().variant(len));
-        for b in buf {
-            self.inner.spi_txd_8().write(|w| unsafe { w.bits(*b) });
-        }
-        self.inner
-            .spi_tcr
-            .modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
     }
 }
 
