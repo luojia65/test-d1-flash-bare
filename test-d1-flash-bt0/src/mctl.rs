@@ -1,4 +1,5 @@
 use core::ptr::{read_volatile, write_volatile};
+use d1_pac::ccu::DRAM_CLK;
 
 const RAM_BASE: usize = 0x40000000;
 
@@ -7,7 +8,7 @@ const CCU: usize = 0x0200_1000;
 const PLL_CPU_CTRL: usize = CCU + 0x0000;
 const PLL_DDR_CTRL: usize = CCU + 0x0010;
 const MBUS_CLK: usize = CCU + 0x0540;
-const DRAM_CLK: usize = CCU + 0x0800;
+const DRAM_CLK_REG: usize = CCU + 0x0800;
 const DRAM_BGR: usize = CCU + 0x080c;
 
 /**
@@ -193,14 +194,14 @@ unsafe fn dram_disable_all_master() {
 
 // Purpose of this routine seems to be to initialize the PLL driving
 // the MBUS and sdram.
-unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
+unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters, clk: &DRAM_CLK) -> u32 {
     // FIXME: This is a bit weird, especially the scaling down and up etc
-    let clk = match para.dram_tpr13 & (1 << 6) {
+    let clk_rate = match para.dram_tpr13 & (1 << 6) {
         0 => para.dram_clk,
         _ => para.dram_tpr9,
     };
-    let n = 66; // (clk * 2) / 24; // FIXME: Why is this always 0?
-    println!("clk {} / n {}", clk, n);
+    let n = 66; // (clk_rate * 2) / 24; // FIXME: Why is this always 0?
+    println!("clk {} / n {}", clk_rate, n);
 
     // set VCO clock divider
     let mut val = read_volatile(PLL_DDR_CTRL as *mut u32);
@@ -229,16 +230,20 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
     write_volatile(PLL_CPU_CTRL as *mut u32, val | 0x08000000);
 
     // turn clock gate on
-    let mut val = read_volatile(DRAM_CLK as *mut u32);
-    val &= 0xfcfffcfc; // select DDR clk source, n=1, m=1
-    val |= 0x80000000; // turn clock on
-    write_volatile(DRAM_CLK as *mut u32, val);
+    clk.write(|w| {
+        // select DDR clk source, n=1, m=1
+        w.clk_src_sel().pll_ddr();
+        w.dram_div2().n1();
+        w.dram_div1().bits(0);
+        // turn clock on
+        w.clk_gating().on()
+    });
 
     return n * 24;
 }
 
 // TODO: verify this
-unsafe fn mctl_sys_init(para: &mut dram_parameters) {
+unsafe fn mctl_sys_init(para: &mut dram_parameters, clk: &DRAM_CLK) {
     // TODO: What is s1 for?
     // s1 = 0x02001000
 
@@ -254,13 +259,14 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_BGR as *mut u32, val);
 
     // turn off bit 30 [??]
-    let mut val = read_volatile(DRAM_CLK as *mut u32);
-    write_volatile(DRAM_CLK as *mut u32, val & 0xbfffffff);
+    // read_volatile(DRAM_CLK_REG as *mut u32);
+    let val = clk.read().bits();
+    write_volatile(DRAM_CLK_REG as *mut u32, val & 0xbfffffff);
     // and toggle dram clock gating off + trigger update
-    val &= 0x7fffffff;
-    write_volatile(DRAM_CLK as *mut u32, val);
-    val |= 0x08000000;
-    write_volatile(DRAM_CLK as *mut u32, val);
+    clk.write(|w| {
+        w.clk_gating().clear_bit();
+        w.sdrclk_upd().set_bit()
+    });
     // sdelay(10); // TODO
     for _ in 0..10_000 {
         core::arch::asm!("nop")
@@ -269,7 +275,7 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     println!("ccm_set_pll_ddr_clk");
     // set ddr pll clock
     // NOTE: This passes an additional `0` in the original, but it's unused
-    let val = ccm_set_pll_ddr_clk(para);
+    let val = ccm_set_pll_ddr_clk(para, clk);
     para.dram_clk = val >> 1;
     println!("ddr_clk {}", val >> 1);
     // sdelay(100); // TODO
@@ -289,8 +295,9 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(MBUS_CLK as *mut u32, val | 0x40000000);
 
     // turn bit 30 back on [?]
-    let val = read_volatile(DRAM_CLK as *mut u32);
-    write_volatile(DRAM_CLK as *mut u32, val | 0x40000000);
+    // let val = read_volatile(DRAM_CLK_REG as *mut u32);
+    let val = clk.read().bits();
+    write_volatile(DRAM_CLK_REG as *mut u32, val | 0x40000000);
 
     println!("SDRAM clock gate ON");
     // turn on sdram clock gate
@@ -298,11 +305,10 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_BGR as *mut u32, val | 0x0000001); // (1<<0);
 
     // turn dram clock gate on, trigger sdr clock update
-    let mut val = read_volatile(DRAM_CLK as *mut u32);
-    val |= 0x80000000;
-    write_volatile(DRAM_CLK as *mut u32, val);
-    val |= 0x88000000;
-    write_volatile(DRAM_CLK as *mut u32, val);
+    clk.write(|w| {
+        w.clk_gating().set_bit();
+        w.sdrclk_upd().set_bit()
+    });
     // sdelay(5); // TODO
     for _ in 0..5_000 {
         core::arch::asm!("nop")
@@ -333,10 +339,10 @@ unsafe fn mctl_vrefzq_init(para: &mut dram_parameters) {
 // time to establish the number of ranks and DQ width. The second time to
 // establish the actual ram size. The third time is final one, with the final
 // settings.
-fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
+fn mctl_core_init(para: &mut dram_parameters, clk: &DRAM_CLK) -> Result<(), &'static str> {
     unsafe {
         println!("sys_init");
-        mctl_sys_init(para);
+        mctl_sys_init(para, clk);
         println!("vrefzq_init");
         mctl_vrefzq_init(para);
     }
@@ -348,8 +354,8 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     // return Err("DRAM initialisation error : 0"); // TODO
 }
 
-fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
-    mctl_core_init(para)?; // TODO: Why is this called all the time?
+fn auto_scan_dram_size(para: &mut dram_parameters, clk: &DRAM_CLK) -> Result<(), &'static str> {
+    mctl_core_init(para, clk)?; // TODO: Why is this called all the time?
 
     let maxrank = match para.dram_para2 & 0xf000 {
         0 => 1,
@@ -388,7 +394,10 @@ fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
     return Ok(());
 }
 
-fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
+fn auto_scan_dram_rank_width(
+    para: &mut dram_parameters,
+    clk: &DRAM_CLK,
+) -> Result<(), &'static str> {
     let s1 = para.dram_tpr13;
     let s2 = para.dram_para1;
 
@@ -396,7 +405,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
-    mctl_core_init(para)?; // TODO: Why is this called all the time?
+    mctl_core_init(para, clk)?; // TODO: Why is this called all the time?
 
     let unknown3 = unsafe { read_volatile(UNKNOWN3 as *mut u32) };
     if unknown3 & (1 << 20) == 0 {
@@ -416,17 +425,17 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 /// SDRAM address lines to establish the size of each rank. It then updates
 /// `dram_tpr13` to reflect that the sizes are now known: a re-init will not
 /// repeat the autoscan.
-fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str> {
+fn auto_scan_dram_config(para: &mut dram_parameters, clk: &DRAM_CLK) -> Result<(), &'static str> {
     println!("DRAM 14");
     if para.dram_tpr13 & (1 << 14) == 0 {
         println!("DRAM 14 no");
-        auto_scan_dram_rank_width(para)?
+        auto_scan_dram_rank_width(para, clk)?
     }
     println!("DRAM 0");
     if para.dram_tpr13 & (1 << 0) == 0 {
         println!("DRAM 0 no");
         // This is not run with current hardcoded params
-        auto_scan_dram_size(para)?
+        auto_scan_dram_size(para, clk)?
     }
     println!("DRAM 15");
     if (para.dram_tpr13 & (1 << 15)) == 0 {
@@ -439,7 +448,7 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
 /// # Safety
 ///
 /// No warranty. Use at own risk. Be lucky to get values from vendor.
-pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
+pub unsafe fn init_dram(para: &mut dram_parameters, clk: &DRAM_CLK) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
@@ -474,7 +483,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // STEP 2: CONFIG
     // Set SDRAM controller auto config
     if (para.dram_tpr13 & 0x1) == 0 {
-        if let Err(msg) = auto_scan_dram_config(para) {
+        if let Err(msg) = auto_scan_dram_config(para, clk) {
             println!("[ERROR DEBUG] {}", msg);
             return 0;
         }
@@ -498,7 +507,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     }
 
     // Init core, final run
-    if let Err(msg) = mctl_core_init(para) {
+    if let Err(msg) = mctl_core_init(para, clk) {
         println!("[ERROR DEBUG] {}", msg);
         return 0;
     };
@@ -506,7 +515,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     return 0;
 }
 
-pub fn init() -> usize {
+pub fn init(clk: &DRAM_CLK) -> usize {
     println!("DRAM INIT");
-    return unsafe { init_dram(&mut DRAM_PARA) };
+    return unsafe { init_dram(&mut DRAM_PARA, clk) };
 }

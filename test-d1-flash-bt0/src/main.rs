@@ -159,7 +159,8 @@ extern "C" fn main() {
     println!("OREBOOT");
     println!("Test");
 
-    let ram_size = mctl::init();
+    let clk = p.CCU.dram_clk;
+    let ram_size = mctl::init(&clk);
     println!("How much 🐏? {}", ram_size);
 
     loop {
