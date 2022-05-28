@@ -14,10 +14,19 @@ mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
+mod mctl;
 mod spi;
 mod spi_flash;
 mod time;
 mod uart;
+use crate::ccu::Clocks;
+use crate::time::U32Ext;
+use buddy_system_allocator::LockedHeap;
+use core::arch::asm;
+use core::panic::PanicInfo;
+
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
 
 use ccu::Clocks;
 use gpio::Gpio;
@@ -157,6 +166,10 @@ extern "C" fn main() {
     };
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
+
+    let clk = p.CCU.dram_clk;
+    let ram_size = mctl::init(&clk);
+    println!("How much 🐏? {}", ram_size);
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
