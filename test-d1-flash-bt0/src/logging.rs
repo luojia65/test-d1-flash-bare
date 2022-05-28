@@ -1,65 +1,63 @@
 //! Log system for BT0
 //!
 //! todo: make module `log` crate comptaible
-use crate::uart;
-use alloc::boxed::Box;
-use core::fmt;
-use core::lazy::OnceCell;
+use crate::gpio::{
+    portb::{PB8, PB9},
+    Function,
+};
+use crate::uart::{self, Serial};
+use d1_pac::UART0;
 use embedded_hal::serial::nb::Write;
 use nb::block;
-use spin::Mutex;
+use spin::{Mutex, Once};
 
-static LOGGER: LockedLogger = LockedLogger {
-    inner: Mutex::new(EmbeddedHalLogger {
-        write: OnceCell::new(),
-    }),
-};
+#[doc(hidden)]
+pub(crate) static LOGGER: Once<LockedLogger> = Once::new();
 
-struct LockedLogger {
-    inner: Mutex<EmbeddedHalLogger>,
+type S = Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>;
+
+#[doc(hidden)]
+pub(crate) struct LockedLogger {
+    pub(crate) inner: Mutex<S>,
 }
 
-struct EmbeddedHalLogger {
-    write: OnceCell<Box<dyn Write<u8, Error = uart::Error> + Send>>,
-}
-
-impl fmt::Write for EmbeddedHalLogger {
+impl ufmt::uWrite for S {
+    type Error = uart::Error;
     #[inline]
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        if let Some(serial) = self.write.get_mut() {
-            for byte in s.as_bytes() {
-                block!(serial.write(*byte)).unwrap();
-            }
-            block!(serial.flush()).unwrap();
+    fn write_str(&mut self, s: &str) -> Result<(), uart::Error> {
+        for byte in s.as_bytes() {
+            block!(self.write(*byte))?
         }
+        block!(self.flush())?;
         Ok(())
     }
 }
 
 #[inline]
-pub fn set_logger<T: Write<u8, Error = uart::Error> + Send + 'static>(logger: T) {
-    let lock = LOGGER.inner.lock();
-    lock.write.set(Box::new(logger)).ok();
-    drop(lock);
-}
-
-#[inline]
-#[doc(hidden)]
-pub fn _print(args: fmt::Arguments) {
-    use fmt::Write;
-    LOGGER.inner.lock().write_fmt(args).unwrap();
+pub fn set_logger(serial: S) {
+    LOGGER.call_once(|| LockedLogger {
+        inner: Mutex::new(serial),
+    });
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! print {
     ($($arg:tt)*) => ({
-        $crate::logging::_print(core::format_args!($($arg)*));
+        let mut logger = crate::logging::LOGGER.wait().inner.lock();
+        let ans = ufmt::uwrite!(logger, $($arg)*);
+        drop(logger);
+        ans
     });
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! println {
-    ($fmt: literal $(, $($arg: tt)+)?) => {
-        $crate::logging::_print(core::format_args!(core::concat!($fmt, "\r\n") $(, $($arg)+)?));
-    }
+    () => ($crate::print!("\r\n"));
+    ($fmt: literal $(, $($arg: tt)+)?) => ({
+        let mut logger = crate::logging::LOGGER.wait().inner.lock();
+        let ans = ufmt::uwrite!(logger, $fmt $(, $($arg)+)?);
+        drop(logger);
+        let _ = $crate::print!("\r\n");
+        ans
+    });
 }

@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
-const NEZHA_FLASH: &'static [u8] = b"
+const NEZHA_FLASH: &[u8] = b"
 OUTPUT_ARCH(riscv)
 ENTRY(head_jump)
 MEMORY {

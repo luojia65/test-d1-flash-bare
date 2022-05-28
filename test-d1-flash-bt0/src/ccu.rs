@@ -16,24 +16,28 @@ pub trait Reset {
     fn assert_reset(ccu: &CcuRb);
 }
 
-impl Gating for d1_pac::UART0 {
-    #[inline]
-    fn gating_pass(ccu: &CcuRb) {
-        ccu.uart_bgr.modify(|_, w| w.uart0_gating().pass())
+macro_rules! define_gating_reset {
+    ($($PERI: ident: ($bgr: ident, $gating: ident, $rst: ident);)+) => {
+$(impl Gating for d1_pac::$PERI {
+    #[inline(always)] fn gating_pass(ccu: &CcuRb) {
+        ccu.$bgr.modify(|_, w| w.$gating().pass())
     }
-    #[inline]
-    fn gating_mask(ccu: &CcuRb) {
-        ccu.uart_bgr.modify(|_, w| w.uart0_gating().mask())
+    #[inline(always)] fn gating_mask(ccu: &CcuRb) {
+        ccu.$bgr.modify(|_, w| w.$gating().mask())
+    }
+}
+impl Reset for d1_pac::$PERI {
+    #[inline(always)] fn deassert_reset(ccu: &CcuRb) {
+        ccu.$bgr.modify(|_, w| w.$rst().deassert())
+    }
+    #[inline(always)] fn assert_reset(ccu: &CcuRb) {
+        ccu.$bgr.modify(|_, w| w.$rst().assert())
+    }
+})+
     }
 }
 
-impl Reset for d1_pac::UART0 {
-    #[inline]
-    fn deassert_reset(ccu: &CcuRb) {
-        ccu.uart_bgr.modify(|_, w| w.uart0_rst().deassert())
-    }
-    #[inline]
-    fn assert_reset(ccu: &CcuRb) {
-        ccu.uart_bgr.modify(|_, w| w.uart0_rst().assert())
-    }
+define_gating_reset! {
+    UART0: (uart_bgr, uart0_gating, uart0_rst);
+    SPI0: (spi_bgr, spi0_gating, spi0_rst);
 }

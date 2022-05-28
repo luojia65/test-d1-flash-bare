@@ -66,11 +66,20 @@ Use `cargo asm --release` to dump under release build configuration.
 
 ## Notes
 
-1. Key code of binary generation
+1. SPI flash driver
+
+This repository includes SPI flash driver.
+
+The Allwinner Nezha board uses 2GB NAND flash MX35LF2GE4AD from MXIC, refer to its [website](https://www.mxic.com.tw/en-us/products/NAND-Flash/Serial-NAND-Flash/Pages/spec.aspx?p=MX35LF2GE4AD&m=Serial+NAND&n=PM2794) for user manual and example applications.
+
+SPI flash driver from this repository would eventually support most of flash brands and
+be made into a separated universal flash support crate.
+
+2. Key code of binary generation
 
 Source: [xtask_finalize_d1_flash_bt0](https://github.com/luojia65/test-d1-flash-bare/blob/c3f67504965384a3f79e74aa7f587e9c5e17152d/xtask/src/main.rs#L143-L178)
 
-2. Jump over header instuction
+3. Jump over header instuction
 
 ```
 0000000000000000 <head_jump>:
