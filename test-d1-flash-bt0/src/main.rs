@@ -4,38 +4,39 @@
 #![feature(once_cell)]
 #![no_std]
 #![no_main]
-extern crate alloc;
+
+use core::{arch::asm, panic::PanicInfo};
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
+
 #[macro_use]
 mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
 mod spi;
+mod spi_flash;
 mod time;
 mod uart;
-use crate::ccu::Clocks;
-use crate::gpio::Gpio;
-use crate::jtag::Jtag;
-use crate::spi::Spi;
-use crate::time::U32Ext;
-use crate::uart::{Config, Parity, Serial, StopBits, WordLength};
-use buddy_system_allocator::LockedHeap;
-use core::arch::asm;
-use core::panic::PanicInfo;
-use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
 
-const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
-const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
+use ccu::Clocks;
+use gpio::Gpio;
+use jtag::Jtag;
+use spi::Spi;
+use spi_flash::SpiNand;
+use time::U32Ext;
+use uart::{Config, Parity, Serial, StopBits, WordLength};
+
+const STACK_SIZE: usize = 8 * 1024; // 8KiB in 32KiB SRAM
+
 #[link_section = ".bss.uninit"]
-static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
-const SBI_HEAP_SIZE: usize = 2 * 1024; // 2KiB
-#[link_section = ".bss.uninit"]
-static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
-#[global_allocator]
-static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
-
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[link_section = ".head.text"]
 #[export_name = "head_jump"]
@@ -83,6 +84,11 @@ pub static HEAD_DATA: HeadData = HeadData {
     string_pool: [0; 13],
 };
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
@@ -105,25 +111,19 @@ pub unsafe extern "C" fn start() -> ! {
         // does not init data segment as BT0 runs in sram
         // 3. prepare stack
         "la     sp, {stack}",
-        "li     t0, {per_hart_stack_size}",
+        "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "la     a0, {head_data}",
         "j      {main}",
-        stack = sym SBI_STACK,
-        per_hart_stack_size = const PER_HART_STACK_SIZE,
-        head_data = sym HEAD_DATA,
-        main = sym main,
+        stack      =   sym SBI_STACK,
+        stack_size = const STACK_SIZE,
+        head_data  =   sym HEAD_DATA,
+        main       =   sym main,
         options(noreturn)
     )
 }
 
 extern "C" fn main() {
-    // init heap memory
-    unsafe {
-        SBI_HEAP
-            .lock()
-            .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
-    };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     let p = Peripherals::take().unwrap();
     let clocks = Clocks {
@@ -158,25 +158,43 @@ extern "C" fn main() {
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
-    let miso = gpio.portc.pc5.into_function_2();
+    let scs = gpio.portc.pc3.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
-    let spi = Spi::new(p.SPI0, (sck, miso, mosi), /*todo mode, freq,*/ &clocks);
-    drop(spi); // todo: use spi peripheral
+    let miso = gpio.portc.pc5.into_function_2();
+    let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
+    let flash = SpiNand::from(spi);
+
+    println!("Flash ID = {:x?}", flash.read_id());
+
+    let mut mem = [0u8; 4096];
+    flash.copy_into(0, &mut mem);
+    let mut data = unsafe {
+        core::slice::from_raw_parts(
+            mem.as_ptr() as *const u32,
+            mem.len() / core::mem::size_of::<u32>(),
+        )
+    };
+    while let [a, b, c, d, tail @ ..] = data {
+        println!("{a:8x} {b:8x} {c:8x} {d:8x}");
+        data = tail;
+    }
 
     println!("OREBOOT");
     println!("Test");
     loop {
-        for i in 1..=3 {
-            println!("Rust🦀 {}", i);
-        }
+        // for i in 1..=3 {
+        //     println!("Rust🦀 {}", i);
+        // }
         for _ in 0..20_000_000 {
-            unsafe { core::arch::asm!("nop") };
+            core::hint::spin_loop();
         }
     }
 }
 
 #[cfg_attr(not(test), panic_handler)]
-#[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
-    loop {}
+    println!("{info}");
+    loop {
+        core::hint::spin_loop();
+    }
 }
