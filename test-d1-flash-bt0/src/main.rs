@@ -4,33 +4,39 @@
 #![feature(once_cell)]
 #![no_std]
 #![no_main]
-extern crate alloc;
+
+use core::{arch::asm, panic::PanicInfo};
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
+
 #[macro_use]
 mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
+mod spi;
+mod spi_flash;
 mod time;
 mod uart;
-use crate::ccu::Clocks;
-use crate::time::U32Ext;
-use buddy_system_allocator::LockedHeap;
-use core::arch::asm;
-use core::panic::PanicInfo;
-use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
 
-const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
-const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
+use ccu::Clocks;
+use gpio::Gpio;
+use jtag::Jtag;
+use spi::Spi;
+use spi_flash::SpiNand;
+use time::U32Ext;
+use uart::{Config, Parity, Serial, StopBits, WordLength};
+
+const STACK_SIZE: usize = 8 * 1024; // 8KiB in 32KiB SRAM
+
 #[link_section = ".bss.uninit"]
-static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
-const SBI_HEAP_SIZE: usize = 2 * 1024; // 2KiB
-#[link_section = ".bss.uninit"]
-static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
-#[global_allocator]
-static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
-
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[link_section = ".head.text"]
 #[export_name = "head_jump"]
@@ -78,6 +84,11 @@ pub static HEAD_DATA: HeadData = HeadData {
     string_pool: [0; 13],
 };
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
@@ -100,30 +111,26 @@ pub unsafe extern "C" fn start() -> ! {
         // does not init data segment as BT0 runs in sram
         // 3. prepare stack
         "la     sp, {stack}",
-        "li     t0, {per_hart_stack_size}",
+        "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "la     a0, {head_data}",
         "j      {main}",
-        stack = sym SBI_STACK,
-        per_hart_stack_size = const PER_HART_STACK_SIZE,
-        head_data = sym HEAD_DATA,
-        main = sym main,
+        "j      {cleanup}",
+        stack      =   sym SBI_STACK,
+        stack_size = const STACK_SIZE,
+        head_data  =   sym HEAD_DATA,
+        main       =   sym main,
+        cleanup    =   sym cleanup,
         options(noreturn)
     )
 }
 
 extern "C" fn main() {
-    // init heap memory
-    unsafe {
-        SBI_HEAP
-            .lock()
-            .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
-    };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
-    use gpio::Gpio;
-    use jtag::Jtag;
-    use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
     let gpio = Gpio::new(p.GPIO);
 
     // configure jtag interface
@@ -142,9 +149,6 @@ extern "C" fn main() {
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
     let rx = gpio.portb.pb9.into_function_6();
-    let clocks = Clocks {
-        uart_clock: 24_000_000.hz(), // hard coded
-    };
     let config = Config {
         baudrate: 115200.bps(),
         wordlength: WordLength::Eight,
@@ -154,20 +158,50 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
+    // prepare spi interface
+    let sck = gpio.portc.pc2.into_function_2();
+    let scs = gpio.portc.pc3.into_function_2();
+    let mosi = gpio.portc.pc4.into_function_2();
+    let miso = gpio.portc.pc5.into_function_2();
+    let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
+    let mut flash = SpiNand::new(spi);
+
+    println!("Oreboot read flash ID = {:x?}", flash.read_id());
+
+    let mut page = [0u8; 256];
+    flash.copy_into(0, &mut page);
+
+    let mut remaining = &page as &[u8];
+    let mut cnt = 0;
+    while let [a, b, c, d, tail @ ..] = remaining {
+        print!("{:08x}", u32::from_le_bytes([*a, *b, *c, *d]));
+        if cnt == 7 {
+            println!("");
+            cnt = 0;
+        } else {
+            print!(" ");
+            cnt += 1;
+        }
+        remaining = &tail;
+    }
+
+    let spi = flash.free();
+    let (_spi, _pins) = spi.free();
+
     println!("OREBOOT");
-    println!("Test");
+    println!("Test succeeded! 🦀");
+}
+
+extern "C" fn cleanup() -> ! {
     loop {
-        for i in 1..=3 {
-            println!("Rust🦀 {}", i);
-        }
-        for _ in 0..20_000_000 {
-            unsafe { core::arch::asm!("nop") };
-        }
+        unsafe { asm!("wfi") };
     }
 }
 
 #[cfg_attr(not(test), panic_handler)]
-#[allow(unused)]
 fn panic(info: &PanicInfo) -> ! {
-    loop {}
+    println!("{info}");
+    loop {
+        core::hint::spin_loop();
+    }
 }
