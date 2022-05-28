@@ -166,7 +166,7 @@ extern "C" fn main() {
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
     let mut flash = SpiNand::new(spi);
 
-    println!("Oreboot read flash ID = {:x?}", flash.read_id());
+    println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
 
     let mut page = [0u8; 256];
     flash.copy_into(0, &mut page);
@@ -174,12 +174,12 @@ extern "C" fn main() {
     let mut remaining = &page as &[u8];
     let mut cnt = 0;
     while let [a, b, c, d, tail @ ..] = remaining {
-        print!("{:08x}", u32::from_le_bytes([*a, *b, *c, *d]));
+        print!("{}", u32::from_le_bytes([*a, *b, *c, *d])).ok();
         if cnt == 7 {
-            println!("");
+            println!().ok();
             cnt = 0;
         } else {
-            print!(" ");
+            print!(" ").ok();
             cnt += 1;
         }
         remaining = &tail;
@@ -188,10 +188,11 @@ extern "C" fn main() {
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
 
-    println!("OREBOOT");
-    println!("Test succeeded! 🦀");
+    println!("OREBOOT").ok();
+    println!("Test succeeded! 🦀").ok();
 }
 
+// should jump to dram but not reach there
 extern "C" fn cleanup() -> ! {
     loop {
         unsafe { asm!("wfi") };
@@ -200,7 +201,14 @@ extern "C" fn cleanup() -> ! {
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{info}");
+    if let Some(location) = info.location() {
+        println!("panic occurred in file '{}' at line {}",
+            location.file(),
+            location.line(),
+        ).ok();
+    } else {
+        println!("panic occurred but can't get location information...").ok();
+    };
     loop {
         core::hint::spin_loop();
     }
