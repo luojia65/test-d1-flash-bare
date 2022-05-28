@@ -30,6 +30,7 @@ pub struct Config {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(unused)] // should be used as exported structure in HAL crate
 pub enum WordLength {
     Five,
     Six,
@@ -38,6 +39,7 @@ pub enum WordLength {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(unused)] // should be used as exported structure in HAL crate
 pub enum Parity {
     None,
     Odd,
@@ -45,6 +47,7 @@ pub enum Parity {
 }
 
 /// Stop Bit configuration parameter for serial.
+#[allow(unused)] // should be used as exported structure in HAL crate
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StopBits {
     /// 1 stop bit

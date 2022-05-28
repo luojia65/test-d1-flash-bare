@@ -19,7 +19,7 @@ use d1_pac::{
 pub struct Spi<SPI: Instance, PINS> {
     inner: SPI,
     pins: PINS,
-    stub: Stub<SPI>,
+    _stub: Stub<SPI>,
 }
 
 /// Allows free for Spi safely.
@@ -90,11 +90,12 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         Spi {
             inner: spi,
             pins,
-            stub: Stub(PhantomData),
+            _stub: Stub(PhantomData),
         }
     }
 
     /// 收发
+    #[inline]
     pub fn transfer(&self, mosi: impl AsRef<[u8]>, dummy: usize, mut miso: impl AsMut<[u8]>) {
         let spi = &self.inner;
         let x = mosi.as_ref();
@@ -143,14 +144,13 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         let Self {
             inner,
             pins,
-            stub: _, // spi is closed via Drop trait of stub
+            _stub: _, // spi is closed via Drop trait of stub
         } = self;
         (inner, pins)
     }
 }
 
-// Disable peripheral when drop; either next bootloading stage will initialize again,
-// or we provide ownership of serial structure to next bootloading stage.
+// Disable peripheral when drop; next bootloading stage will initialize this again.
 impl<SPI: Instance> Drop for Stub<SPI> {
     #[inline]
     fn drop(&mut self) {

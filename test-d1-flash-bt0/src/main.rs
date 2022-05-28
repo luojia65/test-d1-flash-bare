@@ -115,10 +115,12 @@ pub unsafe extern "C" fn start() -> ! {
         "add    sp, sp, t0",
         "la     a0, {head_data}",
         "j      {main}",
+        "j      {cleanup}",
         stack      =   sym SBI_STACK,
         stack_size = const STACK_SIZE,
         head_data  =   sym HEAD_DATA,
         main       =   sym main,
+        cleanup    =   sym cleanup,
         options(noreturn)
     )
 }
@@ -162,32 +164,37 @@ extern "C" fn main() {
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
-    let flash = SpiNand::from(spi);
+    let mut flash = SpiNand::new(spi);
 
-    println!("Flash ID = {:x?}", flash.read_id());
+    println!("Oreboot read flash ID = {:x?}", flash.read_id());
 
-    let mut mem = [0u8; 4096];
-    flash.copy_into(0, &mut mem);
-    let mut data = unsafe {
-        core::slice::from_raw_parts(
-            mem.as_ptr() as *const u32,
-            mem.len() / core::mem::size_of::<u32>(),
-        )
-    };
-    while let [a, b, c, d, tail @ ..] = data {
-        println!("{a:8x} {b:8x} {c:8x} {d:8x}");
-        data = tail;
+    let mut page = [0u8; 256];
+    flash.copy_into(0, &mut page);
+
+    let mut remaining = &page as &[u8];
+    let mut cnt = 0;
+    while let [a, b, c, d, tail @ ..] = remaining {
+        print!("{:08x}", u32::from_le_bytes([*a, *b, *c, *d]));
+        if cnt == 7 {
+            println!("");
+            cnt = 0;
+        } else {
+            print!(" ");
+            cnt += 1;
+        }
+        remaining = &tail;
     }
 
+    let spi = flash.free();
+    let (_spi, _pins) = spi.free();
+
     println!("OREBOOT");
-    println!("Test");
+    println!("Test succeeded! 🦀");
+}
+
+extern "C" fn cleanup() -> ! {
     loop {
-        // for i in 1..=3 {
-        //     println!("Rust🦀 {}", i);
-        // }
-        for _ in 0..20_000_000 {
-            core::hint::spin_loop();
-        }
+        unsafe { asm!("wfi") };
     }
 }
 

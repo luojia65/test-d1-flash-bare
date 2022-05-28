@@ -18,14 +18,20 @@ use consts::*;
 /// NAND Flash with SPI.
 pub struct SpiNand<SPI: Instance, PINS>(Spi<SPI, PINS>);
 
-impl<SPI: Instance, PINS> From<Spi<SPI, PINS>> for SpiNand<SPI, PINS> {
-    fn from(inner: Spi<SPI, PINS>) -> Self {
+impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+    #[inline]
+    pub fn new(inner: Spi<SPI, PINS>) -> Self {
         Self(inner)
+    }
+    #[inline]
+    pub fn free(self) -> Spi<SPI, PINS> {
+        self.0
     }
 }
 
 impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     /// Reads hardware ID.
+    #[inline]
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
 
@@ -36,8 +42,9 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     }
 
     /// Copies bytes from `base` address to `buf`.
-    pub fn copy_into(self, mut base: u32, mut buf: &mut [u8]) {
-        println!("copy {} bytes from {base:#x}", buf.len());
+    #[inline]
+    pub fn copy_into(&mut self, mut base: u32, mut buf: &mut [u8]) {
+        // println!("copy {} bytes from {base:#x}", buf.len());
         while !buf.is_empty() {
             let mut cmd = u32::to_be_bytes(base >> LEN_PAGE_BITS);
             cmd[0] = CMD_READ_GAGE;
@@ -58,6 +65,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
 }
 
 impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+    #[inline]
     fn get_feature(&self, key: u8) -> u8 {
         let mut feature = 0u8;
 
@@ -71,6 +79,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     }
 
     /// 等待忙状态结束。
+    #[inline]
     fn wait(&self) {
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
             core::hint::spin_loop();
