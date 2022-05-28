@@ -145,6 +145,16 @@ const DRAM_PARA: dram_parameters = dram_parameters {
     dram_tpr13: 0x34050100,
 };
 
+fn readl(reg: usize) -> u32 {
+    unsafe { read_volatile(reg as *mut u32) }
+}
+
+fn writel(reg: usize, val: u32) {
+    unsafe {
+        write_volatile(reg as *mut u32, val);
+    }
+}
+
 fn get_pmu_exists() -> bool {
     return false;
 }
