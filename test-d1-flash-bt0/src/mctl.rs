@@ -40,6 +40,8 @@ const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
 const FOO_BASE: usize = 0x0701_0000; // TODO: What do we call this?
 const ANALOG_SYS_PWROFF_GATING_REG: usize = FOO_BASE + 0x0254;
 
+const SID_INFO: usize = 0x3002228;
+
 // p32 memory mapping
 // MSI + MEMC: 0x0310_2000 - 0x0330_1fff
 // NOTE: MSI shares the bus clock with CE, DMAC, IOMMU and CPU_SYS; p 38
@@ -52,30 +54,13 @@ const MC_WORK_MODE_RANK0_HIGH: usize = MSI_MEMC_BASE + 0x0004;
 
 const UNKNOWN1: usize = MSI_MEMC_BASE + 0x0008; // 0x3102008
 const UNKNOWN7: usize = MSI_MEMC_BASE + 0x000c; // 0x310200c
-const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 
 const DRAM_MASTER_CTL1: usize = MSI_MEMC_BASE + 0x0020;
 const DRAM_MASTER_CTL2: usize = MSI_MEMC_BASE + 0x0024;
 const DRAM_MASTER_CTL3: usize = MSI_MEMC_BASE + 0x0028;
 
-// DATX0IOCR x + 4 * size
-// DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
-const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
-const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
+const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 
-const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
-const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
-
-const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
-const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
-const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
-const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
-const UNKNOWN10: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
-const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
-
-// TODO: *_BASE ?
-const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
-const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
 // TODO:
 // 0x0310_2200
 // 0x0310_2210
@@ -94,6 +79,29 @@ const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
 // 0x0310_31c8
 // 0x0310_31d0
 
+// DATX0IOCR x + 4 * size
+// DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
+const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
+const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
+
+const PHY_AC_MAP1: usize = 0x3102500;
+const PHY_AC_MAP2: usize = 0x3102504;
+const PHY_AC_MAP3: usize = 0x3102508;
+const PHY_AC_MAP4: usize = 0x310250c;
+
+const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
+const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
+
+const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
+const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
+const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
+const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
+const UNKNOWN10: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
+const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
+
+// TODO: *_BASE ?
+const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
+const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
 #[repr(C)]
 pub struct dram_parameters {
     pub dram_clk: u32,
@@ -162,6 +170,106 @@ fn writel(reg: usize, val: u32) {
 
 fn get_pmu_exists() -> bool {
     return false;
+}
+
+fn memcpy_self(dst: &mut [u8; 22], src: &mut [u8; 22], len: usize) {
+    for i in 0..len {
+        dst[i] = src[i];
+    }
+}
+
+static mut PHY_CFG0: [u8; 22] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+static mut PHY_CFG1: [u8; 22] = [
+    1, 9, 3, 7, 8, 18, 4, 13, 5, 6, 10, 2, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
+];
+static mut PHY_CFG2: [u8; 22] = [
+    4, 9, 3, 7, 8, 18, 1, 13, 2, 6, 10, 5, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
+];
+static mut PHY_CFG3: [u8; 22] = [
+    1, 7, 8, 12, 10, 18, 4, 13, 5, 6, 3, 2, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
+];
+static mut PHY_CFG4: [u8; 22] = [
+    4, 12, 10, 7, 8, 18, 1, 13, 2, 6, 3, 5, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
+];
+static mut PHY_CFG5: [u8; 22] = [
+    13, 2, 7, 9, 12, 19, 5, 1, 6, 3, 4, 8, 10, 0, 0, 0, 21, 22, 18, 17, 11, 20,
+];
+static mut PHY_CFG6: [u8; 22] = [
+    3, 10, 7, 13, 9, 11, 1, 2, 4, 6, 8, 5, 12, 0, 0, 0, 20, 1, 0, 21, 22, 17,
+];
+static mut PHY_CFG7: [u8; 22] = [
+    3, 2, 4, 7, 9, 1, 17, 12, 18, 14, 13, 8, 15, 6, 10, 5, 19, 22, 16, 21, 20, 11,
+];
+
+// TODO: verify
+// This routine seems to have several remapping tables for 22 lines.
+// It is unclear which lines are being remapped. It seems to pick
+// table PHY_CFG7 for the Nezha board.
+unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
+    // read SID info @ 0x228
+    let fuse = (readl(SID_INFO) >> 8) & 0x4;
+    println!("ddr_efuse_type: 0x{:x}", fuse);
+    if (para.dram_tpr13 >> 18) & 0x3 > 0 {
+        memcpy_self(&mut PHY_CFG0, &mut PHY_CFG7, 22);
+    } else {
+        match fuse {
+            8 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG2, 22),
+            9 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG3, 22),
+            10 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG5, 22),
+            11 => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG4, 22),
+            13 | 14 => {}
+            12 | _ => memcpy_self(&mut PHY_CFG0, &mut PHY_CFG1, 22),
+        }
+    }
+
+    if para.dram_type == 2 {
+        if fuse == 15 {
+            return;
+        }
+        memcpy_self(&mut PHY_CFG0, &mut PHY_CFG6, 22);
+    }
+
+    if para.dram_type == 2 || para.dram_type == 3 {
+        let val = (PHY_CFG0[4] << 25)
+            | (PHY_CFG0[3] << 20)
+            | (PHY_CFG0[2] << 15)
+            | (PHY_CFG0[1] << 10)
+            | (PHY_CFG0[0] << 5);
+        writel(PHY_AC_MAP1, val as u32);
+
+        let val = (PHY_CFG0[10] << 25)
+            | (PHY_CFG0[9] << 20)
+            | (PHY_CFG0[8] << 15)
+            | (PHY_CFG0[7] << 10)
+            | (PHY_CFG0[6] << 5)
+            | PHY_CFG0[5];
+        writel(PHY_AC_MAP2, val as u32);
+
+        let val = (PHY_CFG0[15] << 20)
+            | (PHY_CFG0[14] << 15)
+            | (PHY_CFG0[13] << 10)
+            | (PHY_CFG0[12] << 5)
+            | PHY_CFG0[11];
+        writel(PHY_AC_MAP3, val as u32);
+
+        let val = (PHY_CFG0[21] << 25)
+            | (PHY_CFG0[20] << 20)
+            | (PHY_CFG0[19] << 15)
+            | (PHY_CFG0[18] << 10)
+            | (PHY_CFG0[17] << 5)
+            | PHY_CFG0[16];
+        writel(PHY_AC_MAP4, val as u32);
+
+        let val = (PHY_CFG0[4] << 25)
+            | (PHY_CFG0[3] << 20)
+            | (PHY_CFG0[2] << 15)
+            | (PHY_CFG0[1] << 10)
+            | (PHY_CFG0[0] << 5)
+            | 1;
+        writel(PHY_AC_MAP1, val as u32);
+    }
 }
 
 unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
@@ -434,7 +542,9 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     }
     println!("com_init");
     mctl_com_init(para);
-    // mctl_phy_ac_remapping(para);
+    unsafe {
+        mctl_phy_ac_remapping(para);
+    }
     // auto_set_timing_para(para);
     // return mctl_channel_init(0, para);
     return Ok(());
