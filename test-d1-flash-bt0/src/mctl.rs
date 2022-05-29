@@ -46,8 +46,11 @@ const ANALOG_SYS_PWROFF_GATING_REG: usize = FOO_BASE + 0x0254;
 // NOTE: MSI shares the bus clock with CE, DMAC, IOMMU and CPU_SYS; p 38
 // TODO: Define *_BASE?
 const MSI_MEMC_BASE: usize = 0x0310_2000; // p32 0x0310_2000 - 0x0330_1FFF
+
+// PHY config registers; TODO: fix names
 const MC_WORK_MODE_RANK0_LOW: usize = MSI_MEMC_BASE;
 const MC_WORK_MODE_RANK0_HIGH: usize = MSI_MEMC_BASE + 0x0004;
+
 const UNKNOWN1: usize = MSI_MEMC_BASE + 0x0008; // 0x3102008
 const UNKNOWN7: usize = MSI_MEMC_BASE + 0x000c; // 0x310200c
 const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
@@ -56,16 +59,19 @@ const DRAM_MASTER_CTL1: usize = MSI_MEMC_BASE + 0x0020;
 const DRAM_MASTER_CTL2: usize = MSI_MEMC_BASE + 0x0024;
 const DRAM_MASTER_CTL3: usize = MSI_MEMC_BASE + 0x0028;
 
-const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
-const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
-
 // DATX0IOCR x + 4 * size
 // DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
 const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
 const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
+
+const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
+const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
+
 const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
+const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
 const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
+const UNKNOWN10: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
 
 // TODO: *_BASE ?
@@ -345,6 +351,82 @@ unsafe fn mctl_vrefzq_init(para: &mut dram_parameters) {
     }
 }
 
+// The main purpose of this routine seems to be to copy an address configuration
+// from the dram_para1 and dram_para2 fields to the PHY configuration registers
+// (0x3102000, 0x3102004).
+fn mctl_com_init(para: &mut dram_parameters) {
+    // purpose ??
+    let mut val = readl(UNKNOWN1) & 0xffffc0ff;
+    val |= 0x2000;
+    writel(UNKNOWN1, val);
+
+    // Set sdram type and word width
+    let mut val = readl(MC_WORK_MODE_RANK0_LOW) & 0xff000fff;
+    val |= (para.dram_type & 0x7) << 16; // DRAM type
+    val |= (!para.dram_para2 & 0x1) << 12; // DQ width
+    if para.dram_type != 6 && para.dram_type != 7 {
+        val |= ((para.dram_tpr13 >> 5) & 0x1) << 19; // 2T or 1T
+        val |= 0x400000;
+    } else {
+        val |= 0x480000; // type 6 and 7 must use 1T
+    }
+    writel(MC_WORK_MODE_RANK0_LOW, val);
+
+    // init rank / bank / row for single/dual or two different ranks
+    let val = para.dram_para2;
+    // ((val & 0x100) && (((val >> 12) & 0xf) != 1)) ? 32 : 16;
+    let rank = if (val & 0x100) != 0 {
+        match (val >> 12) & 0xf {
+            1 => 1,
+            _ => 2,
+        }
+    } else {
+        16
+    };
+
+    for i in 0..rank {
+        let ptr = MC_WORK_MODE_RANK0_LOW + i * 4;
+        let mut val = readl(ptr) & 0xfffff000;
+
+        val |= (para.dram_para2 >> 12) & 0x3; // rank
+        val |= ((para.dram_para1 >> (i * 16 + 12)) << 2) & 0x4; // bank - 2
+        val |= (((para.dram_para1 >> (i * 16 + 4)) - 1) << 4) & 0xff; // row - 1
+
+        // convert from page size to column addr width - 3
+        val |= match (para.dram_para1 >> i * 16) & 0xf {
+            8 => 0xa00,
+            4 => 0x900,
+            2 => 0x800,
+            1 => 0x700,
+            _ => 0x600,
+        };
+        writel(ptr, val);
+    }
+
+    // set ODTMAP based on number of ranks in use
+    let val = match readl(MC_WORK_MODE_RANK0_LOW) & 0x1 {
+        0 => 0x201,
+        _ => 0x303,
+    };
+    writel(UNKNOWN9, val);
+
+    // set mctl reg 3c4 to zero when using half DQ
+    if para.dram_para2 & (1 << 0) > 0 {
+        writel(UNKNOWN10, 0);
+    }
+
+    // purpose ??
+    if para.dram_tpr4 > 0 {
+        let mut val = readl(MC_WORK_MODE_RANK0_LOW);
+        val |= (para.dram_tpr4 << 25) & 0x06000000;
+        writel(MC_WORK_MODE_RANK0_LOW, val);
+
+        let mut val = readl(MC_WORK_MODE_RANK0_HIGH);
+        val |= ((para.dram_tpr4 >> 2) << 12) & 0x001ff000;
+        writel(MC_WORK_MODE_RANK0_HIGH, val);
+    }
+}
+
 // Perform an init of the controller. This is actually done 3 times. The first
 // time to establish the number of ranks and DQ width. The second time to
 // establish the actual ram size. The third time is final one, with the final
@@ -356,7 +438,8 @@ fn mctl_core_init(para: &mut dram_parameters, clk: &DRAM_CLK) -> Result<(), &'st
         println!("vrefzq_init");
         mctl_vrefzq_init(para);
     }
-    // mctl_com_init(para);
+    println!("com_init");
+    mctl_com_init(para);
     // mctl_phy_ac_remapping(para);
     // auto_set_timing_para(para);
     // return mctl_channel_init(0, para);
