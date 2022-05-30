@@ -193,34 +193,34 @@ fn get_pmu_exists() -> bool {
     return false;
 }
 
-fn memcpy_self(dst: &mut [u8; 22], src: &mut [u8; 22], len: usize) {
+fn memcpy_self(dst: &mut [u32; 22], src: &mut [u32; 22], len: usize) {
     for i in 0..len {
         dst[i] = src[i];
     }
 }
 
-static mut PHY_CFG0: [u8; 22] = [
+static mut PHY_CFG0: [u32; 22] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
-static mut PHY_CFG1: [u8; 22] = [
+static mut PHY_CFG1: [u32; 22] = [
     1, 9, 3, 7, 8, 18, 4, 13, 5, 6, 10, 2, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG2: [u8; 22] = [
+static mut PHY_CFG2: [u32; 22] = [
     4, 9, 3, 7, 8, 18, 1, 13, 2, 6, 10, 5, 14, 12, 0, 0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG3: [u8; 22] = [
+static mut PHY_CFG3: [u32; 22] = [
     1, 7, 8, 12, 10, 18, 4, 13, 5, 6, 3, 2, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG4: [u8; 22] = [
+static mut PHY_CFG4: [u32; 22] = [
     4, 12, 10, 7, 8, 18, 1, 13, 2, 6, 3, 5, 9, 0, 0, 0, 21, 17, 20, 19, 11, 22,
 ];
-static mut PHY_CFG5: [u8; 22] = [
+static mut PHY_CFG5: [u32; 22] = [
     13, 2, 7, 9, 12, 19, 5, 1, 6, 3, 4, 8, 10, 0, 0, 0, 21, 22, 18, 17, 11, 20,
 ];
-static mut PHY_CFG6: [u8; 22] = [
+static mut PHY_CFG6: [u32; 22] = [
     3, 10, 7, 13, 9, 11, 1, 2, 4, 6, 8, 5, 12, 0, 0, 0, 20, 1, 0, 21, 22, 17,
 ];
-static mut PHY_CFG7: [u8; 22] = [
+static mut PHY_CFG7: [u32; 22] = [
     3, 2, 4, 7, 9, 1, 17, 12, 18, 14, 13, 8, 15, 6, 10, 5, 19, 22, 16, 21, 20, 11,
 ];
 
