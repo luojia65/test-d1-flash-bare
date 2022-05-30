@@ -92,6 +92,27 @@ const PHY_AC_MAP4: usize = 0x310250c;
 const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
 const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
 
+const DRAM_MR0: usize = MSI_MEMC_BASE + 0x1030; // 0x3103030
+const DRAM_MR1: usize = MSI_MEMC_BASE + 0x1034; // 0x3103034
+const DRAM_MR2: usize = MSI_MEMC_BASE + 0x1038; // 0x3103038
+const DRAM_MR3: usize = MSI_MEMC_BASE + 0x103c; // 0x310303c
+const DRAM_ODTX: usize = MSI_MEMC_BASE + 0x102c; // 0x310302c
+
+const DRAMTMG0: usize = MSI_MEMC_BASE + 0x1058; // 0x3103058;
+const DRAMTMG1: usize = MSI_MEMC_BASE + 0x105c; // 0x310305c;
+const DRAMTMG2: usize = MSI_MEMC_BASE + 0x1060; // 0x3103060;
+const DRAMTMG3: usize = MSI_MEMC_BASE + 0x1064; // 0x3103064;
+const DRAMTMG4: usize = MSI_MEMC_BASE + 0x1068; // 0x3103068;
+const DRAMTMG5: usize = MSI_MEMC_BASE + 0x106c; // 0x310306c;
+const DRAMTMG6: usize = MSI_MEMC_BASE + 0x1070; // 0x3103070;
+const DRAMTMG7: usize = MSI_MEMC_BASE + 0x1074; // 0x3103074;
+const DRAMTMG8: usize = MSI_MEMC_BASE + 0x1078; // 0x3103078;
+const PITMG0: usize = MSI_MEMC_BASE + 0x1080; // 0x3103080;
+const PTR3: usize = MSI_MEMC_BASE + 0x1050; // 0x3103050;
+const PTR4: usize = MSI_MEMC_BASE + 0x1054; // 0x3103054;
+const RFSHTMG: usize = MSI_MEMC_BASE + 0x1090; // 0x3103090;
+const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
+
 const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
@@ -529,6 +550,464 @@ fn mctl_com_init(para: &mut dram_parameters) {
     }
 }
 
+// TODO: Check that division works properly!
+fn auto_cal_timing(time: u32, freq: u32) -> u32 {
+    let t = time * freq;
+    let what = if (t % 1000) != 0 { 1 } else { 0 };
+    (t / 1000) + what
+}
+
+// Main purpose of the auto_set_timing routine seems to be to calculate all
+// timing settings for the specific type of sdram used. Read together with
+// an sdram datasheet for context on the various variables.
+fn auto_set_timing_para(para: &mut dram_parameters) {
+    let dfreq = para.dram_clk;
+    let dtype = para.dram_type;
+    let tpr13 = para.dram_tpr13;
+
+    //println!("type  = {}\n", dtype);
+    //println!("tpr13 = {}\n", tpr13);
+
+    // FIXME: Half of this is unused, wat?!
+    let mut tccd: u8 = 0; // 88(sp)
+    let mut trrd: u8 = 0; // s7
+    let mut trcd: u8 = 0; // s3
+    let mut trc: u8 = 0; // s9
+    let mut tfaw: u8 = 0; // s10
+    let mut tras: u8 = 0; // s11
+    let mut trp: u8 = 0; // 0(sp)
+    let mut twtr: u8 = 0; // s1
+    let mut twr: u8 = 0; // s6
+    let mut trtp: u8 = 0; // 64(sp)
+    let mut txp: u8 = 0; // a6
+    let mut trefi: u16 = 0; // s2
+    let mut trfc: u16 = 0; // a5 / 8(sp)
+
+    if para.dram_tpr13 & 0x2 != 0 {
+        //dram_tpr0
+        tccd = ((para.dram_tpr0 >> 21) & 0x7) as u8; // [23:21]
+        tfaw = ((para.dram_tpr0 >> 15) & 0x3f) as u8; // [20:15]
+        trrd = ((para.dram_tpr0 >> 11) & 0xf) as u8; // [14:11]
+        trcd = ((para.dram_tpr0 >> 6) & 0x1f) as u8; // [10:6 ]
+        trc = ((para.dram_tpr0 >> 0) & 0x3f) as u8; // [ 5:0 ]
+
+        //dram_tpr1
+        txp = ((para.dram_tpr1 >> 23) & 0x1f) as u8; // [27:23]
+        twtr = ((para.dram_tpr1 >> 20) & 0x7) as u8; // [22:20]
+        trtp = ((para.dram_tpr1 >> 15) & 0x1f) as u8; // [19:15]
+        twr = ((para.dram_tpr1 >> 11) & 0xf) as u8; // [14:11]
+        trp = ((para.dram_tpr1 >> 6) & 0x1f) as u8; // [10:6 ]
+        tras = ((para.dram_tpr1 >> 0) & 0x3f) as u8; // [ 5:0 ]
+
+        //dram_tpr2
+        trfc = ((para.dram_tpr2 >> 12) & 0x1ff) as u16; // [20:12]
+        trefi = ((para.dram_tpr2 >> 0) & 0xfff) as u16; // [11:0 ]
+    } else {
+        let frq2 = dfreq >> 1; // s0
+        match dtype {
+            3 => {
+                // DDR3
+                trfc = auto_cal_timing(350, frq2) as u16;
+                trefi = auto_cal_timing(7800, frq2) as u16 / 32 + 1; // XXX
+                twr = auto_cal_timing(8, frq2) as u8;
+                trcd = auto_cal_timing(15, frq2) as u8;
+                twtr = twr + 2; // + 2 ? XXX
+                if twr < 2 {
+                    twtr = 2
+                };
+                twr = trcd;
+                if trcd < 2 {
+                    twr = 2
+                };
+                if dfreq <= 800 {
+                    tfaw = auto_cal_timing(50, frq2) as u8;
+                    trrd = auto_cal_timing(10, frq2) as u8;
+                    if trrd < 2 {
+                        trrd = 2
+                    };
+                    trc = auto_cal_timing(53, frq2) as u8;
+                    tras = auto_cal_timing(38, frq2) as u8;
+                    txp = trrd; // 10
+                    trp = trcd; // 15
+                }
+            }
+            2 => {
+                // DDR2
+                tfaw = auto_cal_timing(50, frq2) as u8;
+                trrd = auto_cal_timing(10, frq2) as u8;
+                trcd = auto_cal_timing(20, frq2) as u8;
+                trc = auto_cal_timing(65, frq2) as u8;
+                twtr = auto_cal_timing(8, frq2) as u8;
+                trp = auto_cal_timing(15, frq2) as u8;
+                tras = auto_cal_timing(45, frq2) as u8;
+                trefi = auto_cal_timing(7800, frq2) as u16 / 32;
+                trfc = auto_cal_timing(328, frq2) as u16;
+                txp = 2;
+                twr = trp; // 15
+            }
+            6 => {
+                // LPDDR2
+                tfaw = auto_cal_timing(50, frq2) as u8;
+                if tfaw < 4 {
+                    tfaw = 4
+                };
+                trrd = auto_cal_timing(10, frq2) as u8;
+                if trrd == 0 {
+                    trrd = 1
+                };
+                trcd = auto_cal_timing(24, frq2) as u8;
+                if trcd < 2 {
+                    trcd = 2
+                };
+                trc = auto_cal_timing(70, frq2) as u8;
+                txp = auto_cal_timing(8, frq2) as u8;
+                if txp == 0 {
+                    txp = 1;
+                    twtr = 2;
+                } else {
+                    twtr = txp;
+                    if txp < 2 {
+                        txp = 2;
+                        twtr = 2;
+                    }
+                }
+                twr = auto_cal_timing(15, frq2) as u8;
+                if twr < 2 {
+                    twr = 2
+                };
+                trp = auto_cal_timing(17, frq2) as u8;
+                tras = auto_cal_timing(42, frq2) as u8;
+                trefi = auto_cal_timing(3900, frq2) as u16 / 32;
+                trfc = auto_cal_timing(210, frq2) as u16;
+            }
+            7 => {
+                // LPDDR3
+                tfaw = auto_cal_timing(50, frq2) as u8;
+                if tfaw < 4 {
+                    tfaw = 4
+                };
+                trrd = auto_cal_timing(10, frq2) as u8;
+                if trrd == 0 {
+                    trrd = 1
+                };
+                trcd = auto_cal_timing(24, frq2) as u8;
+                if trcd < 2 {
+                    trcd = 2
+                };
+                trc = auto_cal_timing(70, frq2) as u8;
+                twtr = auto_cal_timing(8, frq2) as u8;
+                if twtr < 2 {
+                    twtr = 2
+                };
+                twr = auto_cal_timing(15, frq2) as u8;
+                if twr < 2 {
+                    twr = 2
+                };
+                trp = auto_cal_timing(17, frq2) as u8;
+                tras = auto_cal_timing(42, frq2) as u8;
+                trefi = auto_cal_timing(3900, frq2) as u16 / 32;
+                trfc = auto_cal_timing(210, frq2) as u16;
+                txp = twtr;
+            }
+            _ => {
+                // default
+                trfc = 128;
+                trp = 6;
+                trefi = 98;
+                txp = 10;
+                twr = 8;
+                twtr = 3;
+                tras = 14;
+                tfaw = 16;
+                trc = 20;
+                trcd = 6;
+                trrd = 3;
+            }
+        }
+        //assign the value back to the DRAM structure
+        tccd = 2;
+        trtp = 4; // not in .S ?
+        para.dram_tpr0 = (trc << 0) as u32
+            | (trcd << 6) as u32
+            | (trrd << 11) as u32
+            | (tfaw << 15) as u32
+            | (tccd << 21) as u32;
+        para.dram_tpr1 = (tras << 0) as u32
+            | (trp << 6) as u32
+            | (twr << 11) as u32
+            | (trtp << 15) as u32
+            | (twtr << 20) as u32
+            | (txp << 23) as u32;
+        para.dram_tpr2 = (trefi << 0) as u32 | (trfc << 12) as u32;
+    }
+
+    let tcksrx: u32; // t1
+    let tckesr: u32; // t4;
+    let mut trd2wr: u32; // t6
+    let trasmax: u32; // t3;
+    let twtp: u32; // s6 (was twr!)
+    let mut tcke: u32; // s8
+    let tmod: u32; // t0
+    let tmrd: u32; // t5
+    let tmrw: u32; // a1
+    let t_rdata_en: u32; // a4 (was tcwl!)
+    let tcl: u8; // a0
+    let wr_latency: u32; // a7
+    let tcwl: u32; // first a4, then a5
+    let mr3: u32; // s0
+    let mr2: u32; // t2
+    let mr1: u32; // s1
+    let mr0: u32; // a3
+    let dmr3: u32; // 72(sp)
+
+    //let trtp:u32;	// 64(sp)
+    let dmr1: u32; // 56(sp)
+    let twr2rd: u32; // 48(sp)
+    let tdinit3: u32; // 40(sp)
+    let tdinit2: u32; // 32(sp)
+    let tdinit1: u32; // 24(sp)
+    let tdinit0: u32; // 16(sp)
+
+    dmr1 = para.dram_mr1;
+    dmr3 = para.dram_mr3;
+
+    match dtype {
+        2 =>
+        // DDR2
+        //	L59:
+        {
+            trasmax = dfreq / 30;
+            if dfreq < 409 {
+                tcl = 3;
+                t_rdata_en = 1;
+                mr0 = 0x06a3;
+            } else {
+                t_rdata_en = 2;
+                tcl = 4;
+                mr0 = 0x0e73;
+            }
+            tmrd = 2;
+            twtp = twr as u32 + 5;
+            tcksrx = 5;
+            tckesr = 4;
+            trd2wr = 4;
+            tcke = 3;
+            tmod = 12;
+            wr_latency = 1;
+            mr3 = 0;
+            mr2 = 0;
+            tdinit0 = 200 * dfreq + 1;
+            tdinit1 = 100 * dfreq / 1000 + 1;
+            tdinit2 = 200 * dfreq + 1;
+            tdinit3 = 1 * dfreq + 1;
+            tmrw = 0;
+            twr2rd = twtr as u32 + 5;
+            tcwl = 0;
+            mr1 = dmr1;
+        }
+        3 =>
+        // DDR3
+        //	L57:
+        {
+            trasmax = dfreq / 30;
+            if dfreq <= 800 {
+                mr0 = 0x1c70;
+                tcl = 6;
+                wr_latency = 2;
+                tcwl = 4;
+                mr2 = 24;
+            } else {
+                mr0 = 0x1e14;
+                tcl = 7;
+                wr_latency = 3;
+                tcwl = 5;
+                mr2 = 32;
+            }
+
+            twtp = tcwl + 2 + twtr as u32; // WL+BL/2+tWTR
+            trd2wr = tcwl + 2 + twr as u32; // WL+BL/2+tWR
+            twr2rd = tcwl + twtr as u32; // WL+tWTR
+
+            tdinit0 = 500 * dfreq + 1; // 500 us
+            tdinit1 = 360 * dfreq / 1000 + 1; // 360 ns
+            tdinit2 = 200 * dfreq + 1; // 200 us
+            tdinit3 = 1 * dfreq + 1; //   1 us
+
+            if ((tpr13 >> 2) & 0x03) == 0x01 || dfreq < 912 {
+                mr1 = dmr1;
+                t_rdata_en = tcwl; // a5 <- a4
+                tcksrx = 5;
+                tckesr = 4;
+                trd2wr = 5;
+            } else {
+                mr1 = dmr1;
+                t_rdata_en = tcwl; // a5 <- a4
+                tcksrx = 5;
+                tckesr = 4;
+                trd2wr = 6;
+            }
+            tcke = 3; // not in .S ?
+            tmod = 12;
+            tmrd = 4;
+            tmrw = 0;
+            mr3 = 0;
+        }
+        6 =>
+        // LPDDR2
+        //	L61:
+        {
+            trasmax = dfreq / 60;
+            mr3 = dmr3;
+            twtp = twr as u32 + 5;
+            mr2 = 6;
+            //  mr1 = 5; // TODO: this is just overwritten (?!)
+            tcksrx = 5;
+            tckesr = 5;
+            trd2wr = 10;
+            tcke = 2;
+            tmod = 5;
+            tmrd = 5;
+            tmrw = 3;
+            tcl = 4;
+            wr_latency = 1;
+            t_rdata_en = 1;
+            tdinit0 = 200 * dfreq + 1;
+            tdinit1 = 100 * dfreq / 1000 + 1;
+            tdinit2 = 11 * dfreq + 1;
+            tdinit3 = 1 * dfreq + 1;
+            twr2rd = twtr as u32 + 5;
+            tcwl = 2;
+            mr1 = 195;
+            mr0 = 0;
+        }
+
+        7 =>
+        // LPDDR3
+        {
+            trasmax = dfreq / 60;
+            if dfreq < 800 {
+                tcwl = 4;
+                wr_latency = 3;
+                t_rdata_en = 6;
+                mr2 = 12;
+            } else {
+                tcwl = 3;
+                tcke = 6;
+                wr_latency = 2;
+                t_rdata_en = 5;
+                mr2 = 10;
+            }
+            twtp = tcwl + 5;
+            tcl = 7;
+            mr3 = dmr3;
+            tcksrx = 5;
+            tckesr = 5;
+            trd2wr = 13;
+            tcke = 3;
+            tmod = 12;
+            tdinit0 = 400 * dfreq + 1;
+            tdinit1 = 500 * dfreq / 1000 + 1;
+            tdinit2 = 11 * dfreq + 1;
+            tdinit3 = 1 * dfreq + 1;
+            tmrd = 5;
+            tmrw = 5;
+            twr2rd = tcwl + twtr as u32 + 5;
+            mr1 = 195;
+            mr0 = 0;
+        }
+
+        _ =>
+        //	L84:
+        {
+            twr2rd = 8; // 48(sp)
+            tcksrx = 4; // t1
+            tckesr = 3; // t4
+            trd2wr = 4; // t6
+            trasmax = 27; // t3
+            twtp = 12; // s6
+            tcke = 2; // s8
+            tmod = 6; // t0
+            tmrd = 2; // t5
+            tmrw = 0; // a1
+            tcwl = 3; // a5
+            tcl = 3; // a0
+            wr_latency = 1; // a7
+            t_rdata_en = 1; // a4
+            mr3 = 0; // s0
+            mr2 = 0; // t2
+            mr1 = 0; // s1
+            mr0 = 0; // a3
+            tdinit3 = 0; // 40(sp)
+            tdinit2 = 0; // 32(sp)
+            tdinit1 = 0; // 24(sp)
+            tdinit0 = 0; // 16(sp)
+        }
+    }
+    // L60:
+    if trtp < tcl - trp + 2 {
+        trtp = tcl - trp + 2;
+    }
+    // FIXME: This always overwrites the above (?!)
+    trtp = 4;
+
+    // Update mode block when permitted
+    if (para.dram_mr0 & 0xffff0000) == 0 {
+        para.dram_mr0 = mr0
+    };
+    if (para.dram_mr1 & 0xffff0000) == 0 {
+        para.dram_mr1 = mr1
+    };
+    if (para.dram_mr2 & 0xffff0000) == 0 {
+        para.dram_mr2 = mr2
+    };
+    if (para.dram_mr3 & 0xffff0000) == 0 {
+        para.dram_mr3 = mr3
+    };
+
+    // Set mode registers
+    writel(DRAM_MR0, para.dram_mr0);
+    writel(DRAM_MR1, para.dram_mr1);
+    writel(DRAM_MR2, para.dram_mr2);
+    writel(DRAM_MR3, para.dram_mr3);
+    writel(DRAM_ODTX, (para.dram_odt_en >> 4) & 0x3); // ??
+
+    let mut val: u32;
+    // Set dram timing DRAMTMG0 - DRAMTMG5
+    val = (twtp << 24) | (tfaw << 16) as u32 | (trasmax << 8) | (tras << 0) as u32;
+    writel(DRAMTMG0, val);
+    val = (txp << 16) as u32 | (trtp << 8) as u32 | (trc << 0) as u32;
+    writel(DRAMTMG1, val);
+    val = (tcwl << 24) | (tcl << 16) as u32 | (trd2wr << 8) | (twr2rd << 0);
+    writel(DRAMTMG2, val);
+    val = (tmrw << 16) | (tmrd << 12) | (tmod << 0);
+    writel(DRAMTMG3, val);
+    val = (trcd << 24) as u32 | (tccd << 16) as u32 | (trrd << 8) as u32 | (trp << 0) as u32;
+    writel(DRAMTMG4, val);
+    val = (tcksrx << 24) | (tcksrx << 16) | (tckesr << 8) | (tcke << 0);
+    writel(DRAMTMG5, val);
+
+    // Set two rank timing
+    val = readl(DRAMTMG8);
+    val &= 0x0fff0000;
+    val |= if para.dram_clk < 800 {
+        0xf0006600
+    } else {
+        0xf0007600
+    };
+    val |= 0x10;
+    writel(DRAMTMG8, val);
+
+    // Set phy interface time PITMG0, PTR3, PTR4
+    val = (0x2 << 24) | (t_rdata_en << 16) | (0x1 << 8) | (wr_latency << 0);
+    writel(PITMG0, val);
+    writel(PTR3, (tdinit0 << 0) | (tdinit1 << 20));
+    writel(PTR4, (tdinit2 << 0) | (tdinit3 << 20));
+
+    // Set refresh timing and mode
+    writel(RFSHTMG, (trefi << 16) as u32 | (trfc << 0) as u32);
+    writel(RFSHCTL1, 0x0fff0000 & (trefi << 15) as u32);
+}
+
 // Perform an init of the controller. This is actually done 3 times. The first
 // time to establish the number of ranks and DQ width. The second time to
 // establish the actual ram size. The third time is final one, with the final
@@ -545,7 +1024,7 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     unsafe {
         mctl_phy_ac_remapping(para);
     }
-    // auto_set_timing_para(para);
+    auto_set_timing_para(para);
     // return mctl_channel_init(0, para);
     return Ok(());
     // return Err("DRAM initialisation error : 0"); // TODO
