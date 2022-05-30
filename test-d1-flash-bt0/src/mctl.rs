@@ -569,48 +569,48 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     //println!("tpr13 = {}\n", tpr13);
 
     // FIXME: Half of this is unused, wat?!
-    let mut tccd: u8 = 0; // 88(sp)
-    let mut trrd: u8 = 0; // s7
-    let mut trcd: u8 = 0; // s3
-    let mut trc: u8 = 0; // s9
-    let mut tfaw: u8 = 0; // s10
-    let mut tras: u8 = 0; // s11
-    let mut trp: u8 = 0; // 0(sp)
-    let mut twtr: u8 = 0; // s1
-    let mut twr: u8 = 0; // s6
-    let mut trtp: u8 = 0; // 64(sp)
-    let mut txp: u8 = 0; // a6
-    let mut trefi: u16 = 0; // s2
-    let mut trfc: u16 = 0; // a5 / 8(sp)
+    let mut tccd: u32 = 0; // 88(sp)
+    let mut trrd: u32 = 0; // s7
+    let mut trcd: u32 = 0; // s3
+    let mut trc: u32 = 0; // s9
+    let mut tfaw: u32 = 0; // s10
+    let mut tras: u32 = 0; // s11
+    let mut trp: u32 = 0; // 0(sp)
+    let mut twtr: u32 = 0; // s1
+    let mut twr: u32 = 0; // s6
+    let mut trtp: u32 = 0; // 64(sp)
+    let mut txp: u32 = 0; // a6
+    let mut trefi: u32 = 0; // s2
+    let mut trfc: u32 = 0; // a5 / 8(sp)
 
     if para.dram_tpr13 & 0x2 != 0 {
         //dram_tpr0
-        tccd = ((para.dram_tpr0 >> 21) & 0x7) as u8; // [23:21]
-        tfaw = ((para.dram_tpr0 >> 15) & 0x3f) as u8; // [20:15]
-        trrd = ((para.dram_tpr0 >> 11) & 0xf) as u8; // [14:11]
-        trcd = ((para.dram_tpr0 >> 6) & 0x1f) as u8; // [10:6 ]
-        trc = ((para.dram_tpr0 >> 0) & 0x3f) as u8; // [ 5:0 ]
+        tccd = (para.dram_tpr0 >> 21) & 0x7; // [23:21]
+        tfaw = (para.dram_tpr0 >> 15) & 0x3f; // [20:15]
+        trrd = (para.dram_tpr0 >> 11) & 0xf; // [14:11]
+        trcd = (para.dram_tpr0 >> 6) & 0x1f; // [10:6 ]
+        trc = (para.dram_tpr0 >> 0) & 0x3f; // [ 5:0 ]
 
         //dram_tpr1
-        txp = ((para.dram_tpr1 >> 23) & 0x1f) as u8; // [27:23]
-        twtr = ((para.dram_tpr1 >> 20) & 0x7) as u8; // [22:20]
-        trtp = ((para.dram_tpr1 >> 15) & 0x1f) as u8; // [19:15]
-        twr = ((para.dram_tpr1 >> 11) & 0xf) as u8; // [14:11]
-        trp = ((para.dram_tpr1 >> 6) & 0x1f) as u8; // [10:6 ]
-        tras = ((para.dram_tpr1 >> 0) & 0x3f) as u8; // [ 5:0 ]
+        txp = (para.dram_tpr1 >> 23) & 0x1f; // [27:23]
+        twtr = (para.dram_tpr1 >> 20) & 0x7; // [22:20]
+        trtp = (para.dram_tpr1 >> 15) & 0x1f; // [19:15]
+        twr = (para.dram_tpr1 >> 11) & 0xf; // [14:11]
+        trp = (para.dram_tpr1 >> 6) & 0x1f; // [10:6 ]
+        tras = (para.dram_tpr1 >> 0) & 0x3f; // [ 5:0 ]
 
         //dram_tpr2
-        trfc = ((para.dram_tpr2 >> 12) & 0x1ff) as u16; // [20:12]
-        trefi = ((para.dram_tpr2 >> 0) & 0xfff) as u16; // [11:0 ]
+        trfc = (para.dram_tpr2 >> 12) & 0x1ff; // [20:12]
+        trefi = (para.dram_tpr2 >> 0) & 0xfff; // [11:0 ]
     } else {
         let frq2 = dfreq >> 1; // s0
         match dtype {
             3 => {
                 // DDR3
-                trfc = auto_cal_timing(350, frq2) as u16;
-                trefi = auto_cal_timing(7800, frq2) as u16 / 32 + 1; // XXX
-                twr = auto_cal_timing(8, frq2) as u8;
-                trcd = auto_cal_timing(15, frq2) as u8;
+                trfc = auto_cal_timing(350, frq2);
+                trefi = auto_cal_timing(7800, frq2) / 32 + 1; // XXX
+                twr = auto_cal_timing(8, frq2);
+                trcd = auto_cal_timing(15, frq2);
                 twtr = twr + 2; // + 2 ? XXX
                 if twr < 2 {
                     twtr = 2
@@ -620,47 +620,47 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                     twr = 2
                 };
                 if dfreq <= 800 {
-                    tfaw = auto_cal_timing(50, frq2) as u8;
-                    trrd = auto_cal_timing(10, frq2) as u8;
+                    tfaw = auto_cal_timing(50, frq2);
+                    trrd = auto_cal_timing(10, frq2);
                     if trrd < 2 {
                         trrd = 2
                     };
-                    trc = auto_cal_timing(53, frq2) as u8;
-                    tras = auto_cal_timing(38, frq2) as u8;
+                    trc = auto_cal_timing(53, frq2);
+                    tras = auto_cal_timing(38, frq2);
                     txp = trrd; // 10
                     trp = trcd; // 15
                 }
             }
             2 => {
                 // DDR2
-                tfaw = auto_cal_timing(50, frq2) as u8;
-                trrd = auto_cal_timing(10, frq2) as u8;
-                trcd = auto_cal_timing(20, frq2) as u8;
-                trc = auto_cal_timing(65, frq2) as u8;
-                twtr = auto_cal_timing(8, frq2) as u8;
-                trp = auto_cal_timing(15, frq2) as u8;
-                tras = auto_cal_timing(45, frq2) as u8;
-                trefi = auto_cal_timing(7800, frq2) as u16 / 32;
-                trfc = auto_cal_timing(328, frq2) as u16;
+                tfaw = auto_cal_timing(50, frq2);
+                trrd = auto_cal_timing(10, frq2);
+                trcd = auto_cal_timing(20, frq2);
+                trc = auto_cal_timing(65, frq2);
+                twtr = auto_cal_timing(8, frq2);
+                trp = auto_cal_timing(15, frq2);
+                tras = auto_cal_timing(45, frq2);
+                trefi = auto_cal_timing(7800, frq2) / 32;
+                trfc = auto_cal_timing(328, frq2);
                 txp = 2;
                 twr = trp; // 15
             }
             6 => {
                 // LPDDR2
-                tfaw = auto_cal_timing(50, frq2) as u8;
+                tfaw = auto_cal_timing(50, frq2);
                 if tfaw < 4 {
                     tfaw = 4
                 };
-                trrd = auto_cal_timing(10, frq2) as u8;
+                trrd = auto_cal_timing(10, frq2);
                 if trrd == 0 {
                     trrd = 1
                 };
-                trcd = auto_cal_timing(24, frq2) as u8;
+                trcd = auto_cal_timing(24, frq2);
                 if trcd < 2 {
                     trcd = 2
                 };
-                trc = auto_cal_timing(70, frq2) as u8;
-                txp = auto_cal_timing(8, frq2) as u8;
+                trc = auto_cal_timing(70, frq2);
+                txp = auto_cal_timing(8, frq2);
                 if txp == 0 {
                     txp = 1;
                     twtr = 2;
@@ -671,42 +671,42 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                         twtr = 2;
                     }
                 }
-                twr = auto_cal_timing(15, frq2) as u8;
+                twr = auto_cal_timing(15, frq2);
                 if twr < 2 {
                     twr = 2
                 };
-                trp = auto_cal_timing(17, frq2) as u8;
-                tras = auto_cal_timing(42, frq2) as u8;
-                trefi = auto_cal_timing(3900, frq2) as u16 / 32;
-                trfc = auto_cal_timing(210, frq2) as u16;
+                trp = auto_cal_timing(17, frq2);
+                tras = auto_cal_timing(42, frq2);
+                trefi = auto_cal_timing(3900, frq2) / 32;
+                trfc = auto_cal_timing(210, frq2);
             }
             7 => {
                 // LPDDR3
-                tfaw = auto_cal_timing(50, frq2) as u8;
+                tfaw = auto_cal_timing(50, frq2);
                 if tfaw < 4 {
                     tfaw = 4
                 };
-                trrd = auto_cal_timing(10, frq2) as u8;
+                trrd = auto_cal_timing(10, frq2);
                 if trrd == 0 {
                     trrd = 1
                 };
-                trcd = auto_cal_timing(24, frq2) as u8;
+                trcd = auto_cal_timing(24, frq2);
                 if trcd < 2 {
                     trcd = 2
                 };
-                trc = auto_cal_timing(70, frq2) as u8;
-                twtr = auto_cal_timing(8, frq2) as u8;
+                trc = auto_cal_timing(70, frq2);
+                twtr = auto_cal_timing(8, frq2);
                 if twtr < 2 {
                     twtr = 2
                 };
-                twr = auto_cal_timing(15, frq2) as u8;
+                twr = auto_cal_timing(15, frq2);
                 if twr < 2 {
                     twr = 2
                 };
-                trp = auto_cal_timing(17, frq2) as u8;
-                tras = auto_cal_timing(42, frq2) as u8;
-                trefi = auto_cal_timing(3900, frq2) as u16 / 32;
-                trfc = auto_cal_timing(210, frq2) as u16;
+                trp = auto_cal_timing(17, frq2);
+                tras = auto_cal_timing(42, frq2);
+                trefi = auto_cal_timing(3900, frq2) / 32;
+                trfc = auto_cal_timing(210, frq2);
                 txp = twtr;
             }
             _ => {
@@ -751,7 +751,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     let tmrd: u32; // t5
     let tmrw: u32; // a1
     let t_rdata_en: u32; // a4 (was tcwl!)
-    let tcl: u8; // a0
+    let tcl: u32; // a0
     let wr_latency: u32; // a7
     let tcwl: u32; // first a4, then a5
     let mr3: u32; // s0
@@ -892,7 +892,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                 mr2 = 12;
             } else {
                 tcwl = 3;
-                tcke = 6;
+                // tcke = 6; // FIXME: This is always overwritten
                 wr_latency = 2;
                 t_rdata_en = 5;
                 mr2 = 10;
@@ -944,9 +944,11 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
         }
     }
     // L60:
+    /*
     if trtp < tcl - trp + 2 {
         trtp = tcl - trp + 2;
     }
+    */
     // FIXME: This always overwrites the above (?!)
     trtp = 4;
 
