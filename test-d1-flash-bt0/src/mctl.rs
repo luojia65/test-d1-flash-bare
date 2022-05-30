@@ -117,7 +117,7 @@ const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
 const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
-const UNKNOWN10: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
+const DX1GCR0: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
 
 // TODO: *_BASE ?
@@ -535,7 +535,7 @@ fn mctl_com_init(para: &mut dram_parameters) {
 
     // set mctl reg 3c4 to zero when using half DQ
     if para.dram_para2 & (1 << 0) > 0 {
-        writel(UNKNOWN10, 0);
+        writel(DX1GCR0, 0);
     }
 
     // purpose ??
@@ -1010,6 +1010,241 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     writel(RFSHCTL1, 0x0fff0000 & (trefi << 15) as u32);
 }
 
+// TODO
+fn eye_delay_compensation(para: &mut dram_parameters) {}
+
+// Init the controller channel. The key part is placing commands in the main
+// command register (PIR, 0x3103000) and checking command status (PGSR0, 0x3103010).
+fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'static str> {
+    let dqs_gating_mode = (para.dram_tpr13 >> 2) & 0x3;
+    let mut val;
+
+    // set DDR clock to half of CPU clock
+    val = readl(0x310200c) & 0xfffff000;
+    val |= (para.dram_clk >> 1) - 1;
+    writel(0x310200c, val);
+
+    // MRCTRL0 nibble 3 undocumented
+    val = readl(0x3103108) & 0xfffff0ff;
+    val |= 0x300;
+    writel(0x3103108, val);
+
+    // DX0GCR0
+    val = readl(0x3103344) & 0xffffffcf;
+    val |= ((!para.dram_odt_en) << 5) & 0x20;
+    if para.dram_clk > 672 {
+        val &= 0xffff09f1;
+        val |= 0x00000400;
+    } else {
+        val &= 0xffff0ff1;
+    }
+    writel(0x3103344, val);
+
+    // DX1GCR0
+    val = readl(DX1GCR0) & 0xffffffcf;
+    val |= ((!para.dram_odt_en) << 5) & 0x20;
+    if para.dram_clk > 672 {
+        val &= 0xffff09f1;
+        val |= 0x00000400;
+    } else {
+        val &= 0xffff0ff1;
+    }
+    writel(DX1GCR0, val);
+
+    // 0x3103208 undocumented
+    val = readl(0x3103208);
+    val |= 0x2;
+    writel(0x3103208, val);
+
+    eye_delay_compensation(para);
+
+    //set PLL SSCG ?
+    //
+    val = readl(0x3103108);
+    if dqs_gating_mode == 1 {
+        val &= !(0xc0); // FIXME
+        writel(0x3103108, val);
+
+        val = readl(0x31030bc);
+        val &= 0xfffffef8;
+        writel(0x31030bc, val);
+    } else if dqs_gating_mode == 2 {
+        val &= !(0xc0); // FIXME
+        val |= 0x80;
+        writel(0x3103108, val);
+
+        val = readl(0x31030bc);
+        val &= 0xfffffef8;
+        val |= ((para.dram_tpr13 >> 16) & 0x1f) - 2;
+        val |= 0x100;
+        writel(0x31030bc, val);
+
+        val = readl(0x310311c) & 0x7fffffff;
+        val |= 0x08000000;
+        writel(0x310311c, val);
+    } else {
+        val &= !(0x40); // FIXME
+        writel(0x3103108, val);
+
+        // sdelay(10); // TODO
+
+        val = readl(0x3103108);
+        val |= 0xc0;
+        writel(0x3103108, val);
+    }
+
+    if para.dram_type == 6 || para.dram_type == 7 {
+        val = readl(0x310311c);
+        if dqs_gating_mode == 1 {
+            val &= 0xf7ffff3f;
+            val |= 0x80000000;
+        } else {
+            val &= 0x88ffffff;
+            val |= 0x22000000;
+        }
+        writel(0x310311c, val);
+    }
+
+    val = readl(0x31030c0);
+    val &= 0xf0000000;
+    val |= if para.dram_para2 & (1 << 12) > 0 {
+        0x03000001
+    } else {
+        0x01000007
+    }; // 0x01003087 XXX
+    writel(0x31030c0, val);
+
+    if readl(0x70005d4) & (1 << 16) > 0 {
+        val = readl(0x7010250);
+        val &= 0xfffffffd;
+        writel(0x7010250, val);
+
+        // sdelay(10); // TODO
+    }
+
+    // Set ZQ config
+    val = readl(0x3103140) & 0xfc000000;
+    val |= para.dram_zq & 0x00ffffff;
+    val |= 0x02000000;
+    writel(0x3103140, val);
+
+    // Initialise DRAM controller
+    if dqs_gating_mode == 1 {
+        writel(0x3103000, 0x52); // prep PHY reset + PLL init + z-cal
+        writel(0x3103000, 0x53); // Go
+
+        while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
+                                               // sdelay(10); // TODO
+
+        // 0x520 = prep DQS gating + DRAM init + d-cal
+        val = if para.dram_type == 3 {0x5a0	 } // + DRAM reset
+					      else { 0x520 };
+    } else {
+        if (readl(0x70005d4) & (1 << 16)) == 0 {
+            // prep DRAM init + PHY reset + d-cal + PLL init + z-cal
+            val = if para.dram_type == 3 { 0x1f2	} // + DRAM reset
+						     else { 0x172 };
+        } else {
+            // prep PHY reset + d-cal + z-cal
+            val = 0x62;
+        }
+    }
+
+    writel(0x3103000, val); // Prep
+    val |= 1;
+    writel(0x3103000, val); // Go
+
+    // sdelay(10); // TODO
+
+    while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
+
+    if readl(0x70005d4) & (1 << 16) > 0 {
+        val = readl(0x310310c);
+        val &= 0xf9ffffff;
+        val |= 0x04000000;
+        writel(0x310310c, val);
+
+        // sdelay(10); // TODO
+
+        val = readl(0x3103004);
+        val |= 0x1;
+        writel(0x3103004, val);
+
+        while (readl(0x3103018) & 0x7) != 0x3 {}
+
+        val = readl(0x7010250);
+        val &= 0xfffffffe;
+        writel(0x7010250, val);
+
+        // sdelay(10); // TODO
+
+        val = readl(0x3103004);
+        val &= 0xfffffffe;
+        writel(0x3103004, val);
+
+        while (readl(0x3103018) & 0x7) != 0x1 {}
+
+        // sdelay(15); // TODO
+
+        if dqs_gating_mode == 1 {
+            val = readl(0x3103108);
+            val &= 0xffffff3f;
+            writel(0x3103108, val);
+
+            val = readl(0x310310c);
+            val &= 0xf9ffffff;
+            val |= 0x02000000;
+            writel(0x310310c, val);
+
+            // sdelay(1); // TODO
+            writel(0x3103000, 0x401);
+
+            while (readl(0x3103010) & 0x1) == 0 {}
+        }
+    }
+
+    // Check for training error
+    val = readl(0x3103010);
+    if ((val >> 20) & 0xff > 0) && (val & 0x100000) > 0 {
+        // return Err("DRAM initialisation error : 0"); // TODO
+        return Err("ZQ calibration error, check external 240 ohm resistor.");
+        // printf("ZQ calibration error, check external 240 ohm resistor.\n");
+    }
+
+    // STATR = Zynq STAT? Wait for status 'normal'?
+    while (readl(0x3103018) & 0x1) == 0 {}
+
+    val = readl(0x310308c);
+    val |= 0x80000000;
+    writel(0x310308c, val);
+
+    // sdelay(10); // TODO
+
+    val = readl(0x310308c);
+    val &= 0x7fffffff;
+    writel(0x310308c, val);
+
+    // sdelay(10); // TODO
+
+    val = readl(0x3102014);
+    val |= 0x80000000;
+    writel(0x3102014, val);
+
+    // sdelay(10); // TODO
+
+    val = readl(0x310310c);
+    val &= 0xf9ffffff;
+    writel(0x310310c, val);
+
+    if dqs_gating_mode == 1 {
+        val = readl(0x310311c);
+        val &= 0xffffff3f;
+        val |= 0x00000040;
+        writel(0x310311c, val);
+    }
+    Ok(())
+}
+
 // Perform an init of the controller. This is actually done 3 times. The first
 // time to establish the number of ranks and DQ width. The second time to
 // establish the actual ram size. The third time is final one, with the final
@@ -1027,9 +1262,7 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         mctl_phy_ac_remapping(para);
     }
     auto_set_timing_para(para);
-    // return mctl_channel_init(0, para);
-    return Ok(());
-    // return Err("DRAM initialisation error : 0"); // TODO
+    mctl_channel_init(0, para)
 }
 
 fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
@@ -1187,6 +1420,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         return 0;
     };
 
+    // TODO: rest
     return 0;
 }
 
