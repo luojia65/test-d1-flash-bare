@@ -8,8 +8,9 @@ use crate::gpio::{
 };
 use d1_pac::{
     spi0::{
+        spi_bcc::DRM_A,
         spi_gcr::{EN_A, MODE_A, TP_EN_A},
-        spi_tcr::{CPHA_A, CPOL_A, SPOL_A, SS_OWNER_A, SS_SEL_A},
+        spi_tcr::{CPHA_A, CPOL_A, SDC1_A, SDC_A, SDM_A, SPOL_A, SS_OWNER_A, SS_SEL_A},
         RegisterBlock,
     },
     CCU, SPI0,
@@ -41,9 +42,9 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 配置时钟源和分频
         #[rustfmt::skip]
         ccu.spi0_clk.write(|w| w
-            .clk_src_sel().pll_peri_1x()
+            .clk_src_sel().pll_peri_1x() // default: 600MHz
             .factor_n()   .n1()
-            .factor_m()   .variant(6 - 1)
+            .factor_m()   .variant(6 - 1) // SPI 时钟 = 600MHz/6 = 100MHz
             .clk_gating() .set_bit()
         );
         // 断开接地，连接时钟
@@ -86,6 +87,10 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             .spol()    .variant(SPOL_A::LOW)
             .cpol()    .variant(CPOL_A::LOW)
             .cpha()    .variant(CPHA_A::P1)
+            // 延时采样：1 周期
+            .sdm()     .variant(SDM_A::DELAY)
+            .sdc()     .variant(SDC_A::DELAY)
+            .sdc1()    .variant(SDC1_A::NORMAL)
         );
         Spi {
             inner: spi,
@@ -96,7 +101,13 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
 
     /// 收发
     #[inline]
-    pub fn transfer(&self, mosi: impl AsRef<[u8]>, dummy: usize, mut miso: impl AsMut<[u8]>) {
+    pub fn transfer(
+        &self,
+        mosi: impl AsRef<[u8]>,
+        dummy: usize,
+        mut miso: impl AsMut<[u8]>,
+        dual: bool,
+    ) {
         let spi = &self.inner;
         let x = mosi.as_ref();
         let r = miso.as_mut();
@@ -110,7 +121,8 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         spi.spi_mbc.write(|w| w.mbc ().variant(lx + ld + lr));
         spi.spi_mtc.write(|w| w.mwtc().variant(lx));
         spi.spi_bcc.write(|w| w.stc ().variant(lx)
-                                       .dbc ().variant(ld as _));
+                                       .dbc ().variant(ld as _)
+                                       .drm ().variant(if dual { DRM_A::DUAL } else { DRM_A::SINGLE }));
         spi.spi_tcr.modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
         };
         // 发送

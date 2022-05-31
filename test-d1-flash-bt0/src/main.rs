@@ -182,7 +182,7 @@ extern "C" fn main() {
             print!(" ").ok();
             cnt += 1;
         }
-        remaining = &tail;
+        remaining = tail;
     }
 
     let spi = flash.free();
@@ -202,10 +202,12 @@ extern "C" fn cleanup() -> ! {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        println!("panic occurred in file '{}' at line {}",
+        println!(
+            "panic occurred in file '{}' at line {}",
             location.file(),
             location.line(),
-        ).ok();
+        )
+        .ok();
     } else {
         println!("panic occurred but can't get location information...").ok();
     };
