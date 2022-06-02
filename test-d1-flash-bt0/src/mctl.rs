@@ -1436,8 +1436,8 @@ fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
         } else {
             if para.dram_tpr13 & (1 << 29) != 0 {
                 // l 7935
-                // println!("DX0 state:{}", dx0);
-                // println!("DX1 state:{}", dx1);
+                // println!("DX0 {}", dx0);
+                // println!("DX1 {}", dx1);
             }
             return Err("dqs gate detect");
         }
@@ -1457,14 +1457,12 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 
     para.dram_para1 = 0x00b000b0;
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
-    println!("para2 {}", para.dram_para2);
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
     mctl_core_init(para)?;
 
-    let unknown3 = readl(PGSR0);
-    if unknown3 & (1 << 20) == 0 {
-        return Ok(());
+    if readl(PGSR0) & (1 << 20) != 0 {
+        return Err("auto scan dram rank & width failed !");
     }
     dqs_gate_detect(para)?;
 
