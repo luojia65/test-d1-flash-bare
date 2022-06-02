@@ -1129,7 +1129,7 @@ fn eye_delay_compensation(para: &mut dram_parameters) {
 
 // Init the controller channel. The key part is placing commands in the main
 // command register (PIR, 0x3103000) and checking command status (PGSR0, 0x3103010).
-fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'static str> {
+fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     let dqs_gating_mode = (para.dram_tpr13 >> 2) & 0x3;
     let mut val;
 
@@ -1350,7 +1350,7 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         mctl_phy_ac_remapping(para);
     }
     auto_set_timing_para(para);
-    mctl_channel_init(0, para)
+    mctl_channel_init(para)
 }
 
 fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
