@@ -128,13 +128,15 @@ const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
 
 const PGCR0: usize = MSI_MEMC_BASE + 0x1100; // 0x3103100
 
-const PLL_SSCG_X: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
+const MRCTRL0: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
 const UNKNOWN14: usize = MSI_MEMC_BASE + 0x110c; // 0x310310c
 
 const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
+const UNDOC1: usize = MSI_MEMC_BASE + 0x1208; // 0x3103208;
 const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
+const DX0GCR0: usize = MSI_MEMC_BASE + 0x1344; // 0x3103344
 const DX1GCR0: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
 
@@ -1139,11 +1141,11 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     writel(0x310200c, val);
 
     // MRCTRL0 nibble 3 undocumented
-    val = readl(PLL_SSCG_X) & 0xfffff0ff;
-    writel(PLL_SSCG_X, val | 0x300);
+    val = readl(MRCTRL0) & 0xfffff0ff;
+    writel(MRCTRL0, val | 0x300);
 
     // DX0GCR0
-    val = readl(0x3103344) & 0xffffffcf;
+    val = readl(DX0GCR0) & 0xffffffcf;
     val |= ((!para.dram_odt_en) << 5) & 0x20;
     if para.dram_clk > 672 {
         val &= 0xffff09f1;
@@ -1151,7 +1153,7 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     } else {
         val &= 0xffff0ff1;
     }
-    writel(0x3103344, val);
+    writel(DX0GCR0, val);
 
     // DX1GCR0
     val = readl(DX1GCR0) & 0xffffffcf;
@@ -1165,24 +1167,24 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     writel(DX1GCR0, val);
 
     // 0x3103208 undocumented
-    val = readl(0x3103208);
-    writel(0x3103208, val | 0x2);
+    val = readl(UNDOC1);
+    writel(UNDOC1, val | 0x2);
 
     eye_delay_compensation(para);
 
     //set PLL SSCG ?
-    val = readl(PLL_SSCG_X);
+    val = readl(MRCTRL0);
     match dqs_gating_mode {
         1 => {
             val &= !(0xc0); // FIXME
-            writel(PLL_SSCG_X, val);
+            writel(MRCTRL0, val);
             let val = readl(0x31030bc);
             writel(0x31030bc, val & 0xfffffef8);
         }
         2 => {
             val &= !(0xc0); // FIXME
             val |= 0x80;
-            writel(PLL_SSCG_X, val);
+            writel(MRCTRL0, val);
 
             let mut val = readl(0x31030bc);
             val &= 0xfffffef8;
@@ -1195,11 +1197,11 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         }
         _ => {
             val &= !(0x40); // FIXME
-            writel(PLL_SSCG_X, val);
+            writel(MRCTRL0, val);
             sdelay(10);
 
-            let val = readl(PLL_SSCG_X);
-            writel(PLL_SSCG_X, val | 0xc0);
+            let val = readl(MRCTRL0);
+            writel(MRCTRL0, val | 0xc0);
         }
     }
 
@@ -1287,9 +1289,9 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         sdelay(15);
 
         if dqs_gating_mode == 1 {
-            val = readl(PLL_SSCG_X);
+            val = readl(MRCTRL0);
             val &= 0xffffff3f;
-            writel(PLL_SSCG_X, val);
+            writel(MRCTRL0, val);
 
             val = readl(UNKNOWN14);
             val &= 0xf9ffffff;
