@@ -1436,6 +1436,43 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
     Ok(())
 }
 
+// The below routine reads the dram config registers and extracts
+// the number of address bits in each rank available. It then calculates
+// total memory size in MB.
+// TODO: verify
+fn dramc_get_dram_size() -> u32 {
+    // MC_WORK_MODE0 (not MC_WORK_MODE, low word)
+    let low = readl(MC_WORK_MODE_RANK0_LOW);
+
+    let mut temp = (low >> 8) & 0xf; // page size - 3
+    temp += (low >> 4) & 0xf; // row width - 1
+    temp += (low >> 2) & 0x3; // bank count - 2
+    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
+    let size0 = 1 << temp;
+
+    temp = low & 0x3; // rank count = 0? -> done
+    if temp == 0 {
+        return size0;
+    }
+
+    // MC_WORK_MODE1 (not MC_WORK_MODE, high word)
+    let high = readl(MC_WORK_MODE_RANK0_HIGH);
+
+    temp = high & 0x3;
+    if temp == 0 {
+        // two identical ranks
+        return 2 * size0;
+    }
+
+    temp = (high >> 8) & 0xf; // page size - 3
+    temp += (high >> 4) & 0xf; // row width - 1
+    temp += (high >> 2) & 0x3; // bank number - 2
+    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
+    let size1 = 1 << temp;
+
+    return size0 + size1; // add size of each rank
+}
+
 /// # Safety
 ///
 /// No warranty. Use at own risk. Be lucky to get values from vendor.
@@ -1502,6 +1539,17 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         println!("[ERROR DEBUG] {}", msg);
         return 0;
     };
+
+    // Get sdram size
+    let mut rc: u32 = para.dram_para2;
+    if rc != 0 {
+        rc = (rc & 0x7fff0000) >> 16;
+    } else {
+        rc = dramc_get_dram_size();
+        para.dram_para2 = (para.dram_para2 & 0xffff) | rc << 16;
+    }
+    let mem_size = rc;
+    println!("DRAM SIZE ={} M", mem_size);
 
     // TODO: rest
     return 0;
