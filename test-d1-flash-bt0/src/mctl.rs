@@ -165,6 +165,26 @@ pub struct dram_parameters {
     pub dram_tpr12: u32,
     pub dram_tpr13: u32,
 }
+/*
+    //dram_tpr0
+    tccd : [23:21]
+    tfaw : [20:15]
+    trrd : [14:11]
+    trcd : [10:6 ]
+    trc  : [ 5:0 ]
+
+    //dram_tpr1
+    txp  : [27:23]
+    twtr : [22:20]
+    trtp : [19:15]
+    twr  : [14:11]
+    trp  : [10:6 ]
+    tras : [ 5:0 ]
+
+    //dram_tpr2
+    trfc : [20:12]
+    trefi: [11:0 ]
+*/
 
 // taken from SPL
 const DRAM_PARA: dram_parameters = dram_parameters {
@@ -548,7 +568,6 @@ fn mctl_com_init(para: &mut dram_parameters) {
     }
 }
 
-// TODO: Check that division works properly!
 fn auto_cal_timing(time: u32, freq: u32) -> u32 {
     let t = time * freq;
     let what = if (t % 1000) != 0 { 1 } else { 0 };
@@ -602,6 +621,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
         trefi = (para.dram_tpr2 >> 0) & 0xfff; // [11:0 ]
     } else {
         let frq2 = dfreq >> 1; // s0
+        println!("frq2 {}", frq2);
         match dtype {
             3 => {
                 // DDR3
@@ -610,6 +630,8 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                 twr = auto_cal_timing(8, frq2);
                 trcd = auto_cal_timing(15, frq2);
                 twtr = twr + 2; // + 2 ? XXX
+                println!("trfc should be 139 {}", trfc);
+                println!("trefi should be 97 {}", trefi);
                 if twr < 2 {
                     twtr = 2
                 };
