@@ -1457,11 +1457,10 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 
     para.dram_para1 = 0x00b000b0;
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
+    println!("para2 {}", para.dram_para2);
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
-    println!("mctl_core_init 1");
     mctl_core_init(para)?;
-    println!("mctl_core_init 1 done");
 
     let unknown3 = readl(PGSR0);
     if unknown3 & (1 << 20) == 0 {
@@ -1507,6 +1506,7 @@ fn dramc_get_dram_size() -> u32 {
     temp += (low >> 2) & 0x3; // bank count - 2
     temp -= 14; // 1MB = 20 bits, minus above 6 = 14
     let size0 = 1 << temp;
+    println!("low {} size0 {}", low, size0);
 
     temp = low & 0x3; // rank count = 0? -> done
     if temp == 0 {
@@ -1527,6 +1527,7 @@ fn dramc_get_dram_size() -> u32 {
     temp += (high >> 2) & 0x3; // bank number - 2
     temp -= 14; // 1MB = 20 bits, minus above 6 = 14
     let size1 = 1 << temp;
+    println!("high {} size1 {}", high, size1);
 
     return size0 + size1; // add size of each rank
 }
@@ -1603,7 +1604,9 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Get sdram size
     let mut rc: u32 = para.dram_para2;
+    println!("DRAM RC {}", rc);
     if rc != 0 {
+        // FIXME: currently, we have 4096, i.e., 0x1000, which is zeroed here
         rc = (rc & 0x7fff0000) >> 16;
     } else {
         rc = dramc_get_dram_size();
