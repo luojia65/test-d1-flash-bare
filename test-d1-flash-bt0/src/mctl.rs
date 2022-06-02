@@ -131,8 +131,8 @@ const PGCR0: usize = MSI_MEMC_BASE + 0x1100; // 0x3103100
 const MRCTRL0: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
 const UNKNOWN14: usize = MSI_MEMC_BASE + 0x110c; // 0x310310c
 
-const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
-const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
+const IOCVR0: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
+const IOCVR1: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 
 const DQS_GATING_X: usize = MSI_MEMC_BASE + 0x111c; // 0x310311c
 
@@ -493,12 +493,12 @@ fn mctl_sys_init(para: &mut dram_parameters) {
 // Set the Vref mode for the controller
 fn mctl_vrefzq_init(para: &mut dram_parameters) {
     if (para.dram_tpr13 & (1 << 17)) == 0 {
-        let val = readl(IOCVR_LOW) & 0x80808080; // IOCVR0
-        writel(IOCVR_LOW, val | para.dram_tpr5 as u32);
+        let val = readl(IOCVR0) & 0x80808080;
+        writel(IOCVR0, val | para.dram_tpr5 as u32);
 
         if (para.dram_tpr13 & (1 << 16)) == 0 {
-            let val = readl(IOCVR_HIGH) & 0xffffff80; // IOCVR1
-            writel(IOCVR_HIGH, val | para.dram_tpr6 as u32 & 0x7f);
+            let val = readl(IOCVR1) & 0xffffff80;
+            writel(IOCVR1, val | para.dram_tpr6 as u32 & 0x7f);
         }
     }
 }
