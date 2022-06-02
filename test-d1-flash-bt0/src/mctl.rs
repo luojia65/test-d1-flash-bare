@@ -37,6 +37,9 @@ const RES_CAL_STATUS_REG: usize = SYS_CFG + 0x016c;
 const ZQ_VALUE: usize = SYS_CFG + 0x0172;
 const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
 
+const BAR_BASE: usize = 0x0700_0000; // TODO: What do we call this?
+const SOME_STATUS: usize = BAR_BASE + 0x05d4; // 0x70005d4
+
 const FOO_BASE: usize = 0x0701_0000; // TODO: What do we call this?
 const ANALOG_SYS_PWROFF_GATING_REG: usize = FOO_BASE + 0x0254;
 
@@ -1220,11 +1223,9 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     }; // 0x01003087 XXX
     writel(0x31030c0, val);
 
-    if readl(0x70005d4) & (1 << 16) > 0 {
+    if readl(SOME_STATUS) & (1 << 16) > 0 {
         val = readl(0x7010250);
-        val &= 0xfffffffd;
-        writel(0x7010250, val);
-
+        writel(0x7010250, val & 0xfffffffd);
         sdelay(10);
     }
 
@@ -1246,7 +1247,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         val = if para.dram_type == 3 {0x5a0	 } // + DRAM reset
 					      else { 0x520 };
     } else {
-        if (readl(0x70005d4) & (1 << 16)) == 0 {
+        if (readl(SOME_STATUS) & (1 << 16)) == 0 {
             // prep DRAM init + PHY reset + d-cal + PLL init + z-cal
             val = if para.dram_type == 3 { 0x1f2	} // + DRAM reset
 						     else { 0x172 };
@@ -1264,7 +1265,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     while (readl(PGSR0) & 0x1) == 0 {} // wait for IDONE
 
-    if readl(0x70005d4) & (1 << 16) > 0 {
+    if readl(SOME_STATUS) & (1 << 16) > 0 {
         val = readl(UNKNOWN14);
         val &= 0xf9ffffff;
         val |= 0x04000000;
@@ -1399,7 +1400,9 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
+    println!("mctl_core_init 1");
     mctl_core_init(para)?;
+    println!("mctl_core_init 1 done");
 
     let unknown3 = unsafe { read_volatile(PGSR0 as *mut u32) };
     if unknown3 & (1 << 20) == 0 {
@@ -1409,7 +1412,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 
     para.dram_tpr13 = s1;
     para.dram_para1 = s2;
-    return Err("auto scan dram rank & width failed !");
+    Ok(())
 }
 
 /* STEP 2 */
@@ -1508,7 +1511,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // Set SDRAM controller auto config
     if (para.dram_tpr13 & 0x1) == 0 {
         if let Err(msg) = auto_scan_dram_config(para) {
-            println!("[ERROR DEBUG] {}", msg);
+            println!("[ERROR CONFIG] {}", msg);
             return 0;
         }
     }
