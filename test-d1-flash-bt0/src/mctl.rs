@@ -42,8 +42,9 @@ const SOME_STATUS: usize = BAR_BASE + 0x05d4; // 0x70005d4
 
 const FOO_BASE: usize = 0x0701_0000; // TODO: What do we call this?
 const ANALOG_SYS_PWROFF_GATING_REG: usize = FOO_BASE + 0x0254;
+const SOME_OTHER: usize = FOO_BASE + 0x0250; // 0x7010250
 
-const SID_INFO: usize = 0x3002228;
+const SID_INFO: usize = SYS_CFG + 0x2228; // 0x3002228
 
 // p32 memory mapping
 // MSI + MEMC: 0x0310_2000 - 0x0330_1fff
@@ -1224,7 +1225,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     writel(0x31030c0, val);
 
     if readl(SOME_STATUS) & (1 << 16) > 0 {
-        val = readl(0x7010250);
+        val = readl(SOME_OTHER);
         writel(0x7010250, val & 0xfffffffd);
         sdelay(10);
     }
@@ -1480,15 +1481,18 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
         println!("DRAM only have internal ZQ!!");
-        write_volatile(
-            RES_CAL_CTRL_REG as *mut u32,
-            read_volatile(RES_CAL_CTRL_REG as *mut u32) | 0x100,
-        );
-        write_volatile(RES240_CTRL_REG as *mut u32, 0);
+        writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
+        writel(RES240_CTRL_REG, 0);
         println!("Rust 🦀 ");
         for _ in 0..20_000_000 {}
     } else {
-        // TODO: gating, calibration
+        writel(ANALOG_SYS_PWROFF_GATING_REG, 0); // 0x7010000 + 0x254; l 9655
+        writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) & !0x003);
+        sdelay(10);
+        writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) & !0x108);
+        sdelay(10);
+        writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x001);
+        sdelay(20);
         let zq_val = read_volatile(ZQ_VALUE as *mut u32);
         println!("ZQ value = 0x{:#02x}***********", zq_val);
     }
