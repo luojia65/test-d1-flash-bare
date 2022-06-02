@@ -527,13 +527,10 @@ fn mctl_com_init(para: &mut dram_parameters) {
     // init rank / bank / row for single/dual or two different ranks
     let val = para.dram_para2;
     // ((val & 0x100) && (((val >> 12) & 0xf) != 1)) ? 32 : 16;
-    let rank = if (val & 0x100) != 0 {
-        match (val >> 12) & 0xf {
-            1 => 1,
-            _ => 2,
-        }
+    let rank = if (val & 0x100) != 0 && (val >> 12) & 0xf != 1 {
+        2
     } else {
-        16
+        1
     };
 
     for i in 0..rank {
