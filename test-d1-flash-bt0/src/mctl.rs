@@ -1365,10 +1365,8 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
 // establish the actual ram size. The third time is final one, with the final
 // settings.
 fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
-    unsafe {
-        mctl_sys_init(para);
-        mctl_vrefzq_init(para);
-    }
+    mctl_sys_init(para);
+    mctl_vrefzq_init(para);
     mctl_com_init(para);
     unsafe {
         mctl_phy_ac_remapping(para);
