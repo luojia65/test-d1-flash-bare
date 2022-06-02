@@ -89,8 +89,12 @@ const PHY_AC_MAP2: usize = 0x3102504;
 const PHY_AC_MAP3: usize = 0x3102508;
 const PHY_AC_MAP4: usize = 0x310250c;
 
+// *_BASE?
+const PIR: usize = MSI_MEMC_BASE + 0x1000; // 0x3103000
 const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
-const UNKNOWN3: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
+const PGSR0: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
+
+const STATR_X: usize = MSI_MEMC_BASE + 0x1018; // 0x3103018
 
 const DRAM_MR0: usize = MSI_MEMC_BASE + 0x1030; // 0x3103030
 const DRAM_MR1: usize = MSI_MEMC_BASE + 0x1034; // 0x3103034
@@ -98,6 +102,8 @@ const DRAM_MR2: usize = MSI_MEMC_BASE + 0x1038; // 0x3103038
 const DRAM_MR3: usize = MSI_MEMC_BASE + 0x103c; // 0x310303c
 const DRAM_ODTX: usize = MSI_MEMC_BASE + 0x102c; // 0x310302c
 
+const PTR3: usize = MSI_MEMC_BASE + 0x1050; // 0x3103050;
+const PTR4: usize = MSI_MEMC_BASE + 0x1054; // 0x3103054;
 const DRAMTMG0: usize = MSI_MEMC_BASE + 0x1058; // 0x3103058;
 const DRAMTMG1: usize = MSI_MEMC_BASE + 0x105c; // 0x310305c;
 const DRAMTMG2: usize = MSI_MEMC_BASE + 0x1060; // 0x3103060;
@@ -108,10 +114,12 @@ const DRAMTMG6: usize = MSI_MEMC_BASE + 0x1070; // 0x3103070;
 const DRAMTMG7: usize = MSI_MEMC_BASE + 0x1074; // 0x3103074;
 const DRAMTMG8: usize = MSI_MEMC_BASE + 0x1078; // 0x3103078;
 const PITMG0: usize = MSI_MEMC_BASE + 0x1080; // 0x3103080;
-const PTR3: usize = MSI_MEMC_BASE + 0x1050; // 0x3103050;
-const PTR4: usize = MSI_MEMC_BASE + 0x1054; // 0x3103054;
+const UNKNOWN13: usize = MSI_MEMC_BASE + 0x108c; // 0x310308c;
 const RFSHTMG: usize = MSI_MEMC_BASE + 0x1090; // 0x3103090;
 const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
+
+const PLL_SSCG_X: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
+const UNKNOWN14: usize = MSI_MEMC_BASE + 0x110c; // 0x310310c
 
 const IOCVR_LOW: usize = MSI_MEMC_BASE + 0x1110; // 0x3103110
 const IOCVR_HIGH: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
@@ -123,6 +131,7 @@ const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
 // TODO: *_BASE ?
 const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
 const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
+
 #[repr(C)]
 pub struct dram_parameters {
     pub dram_clk: u32,
@@ -186,6 +195,15 @@ fn readl(reg: usize) -> u32 {
 fn writel(reg: usize, val: u32) {
     unsafe {
         write_volatile(reg as *mut u32, val);
+    }
+}
+
+fn sdelay(micros: usize) {
+    let millis = micros * 1000;
+    unsafe {
+        for _ in 0..millis {
+            core::arch::asm!("nop")
+        }
     }
 }
 
@@ -1025,9 +1043,9 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     writel(0x310200c, val);
 
     // MRCTRL0 nibble 3 undocumented
-    val = readl(0x3103108) & 0xfffff0ff;
+    val = readl(PLL_SSCG_X) & 0xfffff0ff;
     val |= 0x300;
-    writel(0x3103108, val);
+    writel(PLL_SSCG_X, val);
 
     // DX0GCR0
     val = readl(0x3103344) & 0xffffffcf;
@@ -1060,10 +1078,10 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     //set PLL SSCG ?
     //
-    val = readl(0x3103108);
+    val = readl(PLL_SSCG_X);
     if dqs_gating_mode == 1 {
         val &= !(0xc0); // FIXME
-        writel(0x3103108, val);
+        writel(PLL_SSCG_X, val);
 
         val = readl(0x31030bc);
         val &= 0xfffffef8;
@@ -1071,7 +1089,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     } else if dqs_gating_mode == 2 {
         val &= !(0xc0); // FIXME
         val |= 0x80;
-        writel(0x3103108, val);
+        writel(PLL_SSCG_X, val);
 
         val = readl(0x31030bc);
         val &= 0xfffffef8;
@@ -1084,13 +1102,12 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         writel(0x310311c, val);
     } else {
         val &= !(0x40); // FIXME
-        writel(0x3103108, val);
+        writel(PLL_SSCG_X, val);
 
-        // sdelay(10); // TODO
+        sdelay(10);
 
-        val = readl(0x3103108);
-        val |= 0xc0;
-        writel(0x3103108, val);
+        val = readl(PLL_SSCG_X);
+        writel(PLL_SSCG_X, val | 0xc0);
     }
 
     if para.dram_type == 6 || para.dram_type == 7 {
@@ -1119,7 +1136,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         val &= 0xfffffffd;
         writel(0x7010250, val);
 
-        // sdelay(10); // TODO
+        sdelay(10);
     }
 
     // Set ZQ config
@@ -1130,8 +1147,8 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     // Initialise DRAM controller
     if dqs_gating_mode == 1 {
-        writel(0x3103000, 0x52); // prep PHY reset + PLL init + z-cal
-        writel(0x3103000, 0x53); // Go
+        writel(PIR, 0x52); // prep PHY reset + PLL init + z-cal
+        writel(PIR, 0x53); // Go
 
         while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
                                                // sdelay(10); // TODO
@@ -1150,54 +1167,54 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         }
     }
 
-    writel(0x3103000, val); // Prep
+    writel(PIR, val); // Prep
     val |= 1;
-    writel(0x3103000, val); // Go
+    writel(PIR, val); // Go
 
-    // sdelay(10); // TODO
+    sdelay(10);
 
     while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
 
     if readl(0x70005d4) & (1 << 16) > 0 {
-        val = readl(0x310310c);
+        val = readl(UNKNOWN14);
         val &= 0xf9ffffff;
         val |= 0x04000000;
-        writel(0x310310c, val);
+        writel(UNKNOWN14, val);
 
-        // sdelay(10); // TODO
+        sdelay(10);
 
         val = readl(0x3103004);
         val |= 0x1;
         writel(0x3103004, val);
 
-        while (readl(0x3103018) & 0x7) != 0x3 {}
+        while (readl(STATR_X) & 0x7) != 0x3 {}
 
         val = readl(0x7010250);
         val &= 0xfffffffe;
         writel(0x7010250, val);
 
-        // sdelay(10); // TODO
+        sdelay(10);
 
         val = readl(0x3103004);
         val &= 0xfffffffe;
         writel(0x3103004, val);
 
-        while (readl(0x3103018) & 0x7) != 0x1 {}
+        while (readl(STATR_X) & 0x7) != 0x1 {}
 
-        // sdelay(15); // TODO
+        sdelay(15);
 
         if dqs_gating_mode == 1 {
-            val = readl(0x3103108);
+            val = readl(PLL_SSCG_X);
             val &= 0xffffff3f;
-            writel(0x3103108, val);
+            writel(PLL_SSCG_X, val);
 
-            val = readl(0x310310c);
+            val = readl(UNKNOWN14);
             val &= 0xf9ffffff;
             val |= 0x02000000;
-            writel(0x310310c, val);
+            writel(UNKNOWN14, val);
 
-            // sdelay(1); // TODO
-            writel(0x3103000, 0x401);
+            sdelay(1);
+            writel(PIR, 0x401);
 
             while (readl(0x3103010) & 0x1) == 0 {}
         }
@@ -1212,29 +1229,19 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     }
 
     // STATR = Zynq STAT? Wait for status 'normal'?
-    while (readl(0x3103018) & 0x1) == 0 {}
+    while (readl(STATR_X) & 0x1) == 0 {}
 
-    val = readl(0x310308c);
-    val |= 0x80000000;
-    writel(0x310308c, val);
-
-    // sdelay(10); // TODO
-
-    val = readl(0x310308c);
-    val &= 0x7fffffff;
-    writel(0x310308c, val);
-
-    // sdelay(10); // TODO
-
+    val = readl(UNKNOWN13);
+    writel(UNKNOWN13, val | 0x80000000);
+    sdelay(10);
+    val = readl(UNKNOWN13);
+    writel(UNKNOWN13, val & 0x7fffffff);
+    sdelay(10);
     val = readl(0x3102014);
-    val |= 0x80000000;
-    writel(0x3102014, val);
-
-    // sdelay(10); // TODO
-
-    val = readl(0x310310c);
-    val &= 0xf9ffffff;
-    writel(0x310310c, val);
+    writel(0x3102014, val | 0x80000000);
+    sdelay(10);
+    val = readl(UNKNOWN14);
+    writel(UNKNOWN14, val & 0xf9ffffff);
 
     if dqs_gating_mode == 1 {
         val = readl(0x310311c);
@@ -1315,7 +1322,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 
     mctl_core_init(para)?; // TODO: Why is this called all the time?
 
-    let unknown3 = unsafe { read_volatile(UNKNOWN3 as *mut u32) };
+    let unknown3 = unsafe { read_volatile(PGSR0 as *mut u32) };
     if unknown3 & (1 << 20) == 0 {
         return Ok(());
     }
