@@ -1321,8 +1321,6 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     // Check for training error
     val = readl(PGSR0);
     if ((val >> 20) & 0xff != 0) && (val & 0x100000) != 0 {
-        // FIXME: we get to this place :)
-        println!("val {:x}", val);
         // return Err("DRAM initialisation error : 0"); // TODO
         return Err("ZQ calibration error, check external 240 ohm resistor.");
     }
@@ -1367,6 +1365,13 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     mctl_channel_init(para)
 }
 
+// Autoscan sizes a dram device by cycling through address lines and figuring
+// out if it is connected to a real address line, or if the address is a mirror.
+// First the column and bank bit allocations are set to low values (2 and 9 address
+// lines. Then a maximum allocation (16 lines) is set for rows and this is tested.
+// Next the BA2 line is checked. This seems to be placed above the column, BA0-1 and
+// row addresses. Finally, the column address is allocated 13 lines and these are
+// tested. The results are placed in dram_para1 and dram_para2.
 fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     mctl_core_init(para)?;
 
@@ -1375,32 +1380,180 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         _ => 2,
     };
     let mc_work_mode = MC_WORK_MODE_RANK0_LOW;
-    let offs = 0;
+    let mut offs = 0;
 
-    println!("DRAM write test");
+    // println!("DRAM write test");
     // write test pattern
     unsafe {
         for i in 0..64 {
             let ptr: u32 = RAM_BASE as u32 + 4 * i;
-            write_volatile(
-                (RAM_BASE as u32 + ptr) as *mut u32,
-                if i & 1 > 0 { ptr } else { !ptr },
-            );
+            let val = if i & 1 > 0 { ptr } else { !ptr };
+            // println!("{:#x}", val);
+            write_volatile((RAM_BASE as u32 + ptr) as *mut u32, val);
         }
     }
 
+    // NOTE: looked good at this point
+    /*
     println!("DRAM read test");
     unsafe {
         for i in 0..64 {
             let ptr: u32 = RAM_BASE as u32 + 4 * i;
-            let r = read_volatile((RAM_BASE as u32 + ptr) as *mut u32);
-            println!("{:#x}", r);
+            let val = read_volatile((RAM_BASE as u32 + ptr) as *mut u32);
+            println!("{:#x}", val);
         }
     }
+    */
 
     // TODO: do the rest
+    for rank in 0..maxrank - 1 {
+        // Set row mode
+        let mut rval = readl(mc_work_mode);
+        rval &= 0xfffff0f3;
+        rval |= 0x000006f0;
+        writel(mc_work_mode, rval);
+        while readl(mc_work_mode) != rval {}
 
-    return Err("auto scan dram size failed !");
+        // Scan per address line, until address wraps (i.e. see shadow)
+        /*
+        for i in 11..16 {
+            chk = RAM_BASE + (1 << (i + 11));
+            ptr = RAM_BASE;
+            for j in 0..63 {
+                if (readl(chk) != ((j & 1) { ptr } else { !ptr }) > 0 {
+                    // goto out1;
+                }
+                ptr += 4;
+                chk += 4;
+            }
+            break;
+        out1: ;
+        }
+        if (i > 16) i = 16;
+        printf("[AUTO DEBUG] rank %d row = %d\n", rank, i);
+            */
+        let i = 15; // FIXME above
+
+        // Store rows in para 1
+        let shft = 4 + offs;
+        rval = para.dram_para1;
+        rval &= !(0xff << shft);
+        rval |= i << shft;
+        para.dram_para1 = rval;
+
+        if rank == 1 {
+            // Set bank mode for rank0
+            rval = readl(MC_WORK_MODE_RANK0_LOW);
+            rval &= 0xfffff003;
+            rval |= 0x000006a4;
+            writel(MC_WORK_MODE_RANK0_LOW, rval);
+        }
+
+        // Set bank mode for current rank
+        rval = readl(mc_work_mode);
+        rval &= 0xfffff003;
+        rval |= 0x000006a4;
+        writel(mc_work_mode, rval);
+        while readl(mc_work_mode) != rval {}
+
+        // Test if bit A23 is BA2 or mirror XXX A22?
+        let mut j = 0;
+        for i in 0..63 {
+            // where to check
+            let chk = RAM_BASE + (1 << 22) + i * 4;
+            // pattern
+            let ptr = RAM_BASE + i * 4;
+            // expected value
+            let exp = (if i & 1 != 0 { ptr } else { !ptr }) as u32;
+            if readl(chk) != exp {
+                j = 1;
+                break;
+            }
+        }
+        let banks = (j + 1) << 2; // 4 or 8
+        println!("[AUTO DEBUG] rank {} bank = {}", rank, banks);
+
+        /*
+        // Store banks in para 1
+        shft = 12 + offs;
+        rval  = para->dram_para1;
+        rval &= ~(0xf << shft);
+        rval |= j << shft;
+        para->dram_para1 = rval;
+
+        if (rank == 1) {
+            // Set page mode for rank0
+            rval  = readl(MC_WORK_MODE_RANK0_LOW);
+            rval &= 0xfffff003;
+            rval |= 0x00000aa0;
+            writel(MC_WORK_MODE_RANK0_LOW, rval);
+        }
+
+        // Set page mode for current rank
+        rval  = readl(mc_work_mode);
+        rval &= 0xfffff003;
+        rval |= 0x00000aa0;
+        writel(mc_work_mode, rval);
+        while (readl(mc_work_mode) != rval);
+
+        // Scan per address line, until address wraps (i.e. see shadow)
+        for(i = 9; i < 14; i++) {
+            chk = RAM_BASE + (1 << i);
+            ptr = RAM_BASE;
+            for (j = 0; j < 64; j++) {
+                if (readl(chk) != ((j & 1) ? ptr : ~ptr))
+                    goto out2;
+                ptr += 4;
+                chk += 4;
+            }
+            break;
+        out2:;
+        }
+        if (i > 13) i = 13;
+        int pgsize = (i==9) ? 0 : (1 << (i-10));
+        printf("[AUTO DEBUG] rank %d page size = %d KB\n", rank, pgsize);
+
+        // Store page size
+        shft = offs;
+        rval  = para->dram_para1;
+        rval &= ~(0xf << shft);
+        rval |= pgsize << shft;
+        para->dram_para1 = rval;
+
+        // Move to next rank
+        rank++;
+        if (rank != maxrank) {
+            if (rank == 1) {
+                rval  = readl(MC_WORK_MODE_RANK1_LOW); // MC_WORK_MODE
+                rval &= 0xfffff003;
+                rval |= 0x000006f0;
+                writel(MC_WORK_MODE_RANK1_LOW, rval);
+
+                rval  = readl(MC_WORK_MODE_RANK1_HIGH); // MC_WORK_MODE2
+                rval &= 0xfffff003;
+                rval |= 0x000006f0;
+                writel(MC_WORK_MODE_RANK1_HIGH, rval);
+            }
+            offs += 16; // store rank1 config in upper half of para1
+            mc_work_mode +=  4; // move to MC_WORK_MODE2
+        }
+        */
+    }
+    /*
+    if (maxrank == 2) {
+        para->dram_para2 &= 0xfffff0ff;
+        // note: rval is equal to para->dram_para1 here
+        if ((rval & 0xffff) == ((rval >> 16) & 0xffff)) {
+            printf("rank1 config same as rank0\n");
+        }
+        else {
+            para->dram_para2 |= 0x00000100;
+            printf("rank1 config different from rank0\n");
+        }
+    }
+    */
+
+    Ok(())
 }
 
 // The below routine reads the command status register to extract
@@ -1604,7 +1757,6 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     let mut rc: u32 = para.dram_para2;
     println!("DRAM RC {}", rc);
     if rc != 0 {
-        // FIXME: currently, we have 4096, i.e., 0x1000, which is zeroed here
         rc = (rc & 0x7fff0000) >> 16;
     } else {
         rc = dramc_get_dram_size();
