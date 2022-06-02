@@ -1044,8 +1044,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     // MRCTRL0 nibble 3 undocumented
     val = readl(PLL_SSCG_X) & 0xfffff0ff;
-    val |= 0x300;
-    writel(PLL_SSCG_X, val);
+    writel(PLL_SSCG_X, val | 0x300);
 
     // DX0GCR0
     val = readl(0x3103344) & 0xffffffcf;
@@ -1071,43 +1070,42 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     // 0x3103208 undocumented
     val = readl(0x3103208);
-    val |= 0x2;
-    writel(0x3103208, val);
+    writel(0x3103208, val | 0x2);
 
     eye_delay_compensation(para);
 
     //set PLL SSCG ?
     //
     val = readl(PLL_SSCG_X);
-    if dqs_gating_mode == 1 {
-        val &= !(0xc0); // FIXME
-        writel(PLL_SSCG_X, val);
+    match dqs_gating_mode {
+        1 => {
+            val &= !(0xc0); // FIXME
+            writel(PLL_SSCG_X, val);
+            let val = readl(0x31030bc);
+            writel(0x31030bc, val & 0xfffffef8);
+        }
+        2 => {
+            val &= !(0xc0); // FIXME
+            val |= 0x80;
+            writel(PLL_SSCG_X, val);
 
-        val = readl(0x31030bc);
-        val &= 0xfffffef8;
-        writel(0x31030bc, val);
-    } else if dqs_gating_mode == 2 {
-        val &= !(0xc0); // FIXME
-        val |= 0x80;
-        writel(PLL_SSCG_X, val);
+            let mut val = readl(0x31030bc);
+            val &= 0xfffffef8;
+            val |= ((para.dram_tpr13 >> 16) & 0x1f) - 2;
+            val |= 0x100;
+            writel(0x31030bc, val);
 
-        val = readl(0x31030bc);
-        val &= 0xfffffef8;
-        val |= ((para.dram_tpr13 >> 16) & 0x1f) - 2;
-        val |= 0x100;
-        writel(0x31030bc, val);
+            let val = readl(0x310311c) & 0x7fffffff;
+            writel(0x310311c, val | 0x08000000);
+        }
+        _ => {
+            val &= !(0x40); // FIXME
+            writel(PLL_SSCG_X, val);
+            sdelay(10);
 
-        val = readl(0x310311c) & 0x7fffffff;
-        val |= 0x08000000;
-        writel(0x310311c, val);
-    } else {
-        val &= !(0x40); // FIXME
-        writel(PLL_SSCG_X, val);
-
-        sdelay(10);
-
-        val = readl(PLL_SSCG_X);
-        writel(PLL_SSCG_X, val | 0xc0);
+            let val = readl(PLL_SSCG_X);
+            writel(PLL_SSCG_X, val | 0xc0);
+        }
     }
 
     if para.dram_type == 6 || para.dram_type == 7 {
@@ -1180,27 +1178,19 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         val &= 0xf9ffffff;
         val |= 0x04000000;
         writel(UNKNOWN14, val);
-
         sdelay(10);
 
         val = readl(0x3103004);
-        val |= 0x1;
-        writel(0x3103004, val);
-
+        writel(0x3103004, val | 0x1);
         while (readl(STATR_X) & 0x7) != 0x3 {}
 
         val = readl(0x7010250);
-        val &= 0xfffffffe;
-        writel(0x7010250, val);
-
+        writel(0x7010250, val & 0xfffffffe);
         sdelay(10);
 
         val = readl(0x3103004);
-        val &= 0xfffffffe;
-        writel(0x3103004, val);
-
+        writel(0x3103004, val & 0xfffffffe);
         while (readl(STATR_X) & 0x7) != 0x1 {}
-
         sdelay(15);
 
         if dqs_gating_mode == 1 {
