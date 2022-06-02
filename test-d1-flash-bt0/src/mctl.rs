@@ -165,6 +165,7 @@ pub struct dram_parameters {
     pub dram_tpr12: u32,
     pub dram_tpr13: u32,
 }
+// FIXME: This could be a concise struct. Let Rust piece it together.
 /*
     //dram_tpr0
     tccd : [23:21]
@@ -277,6 +278,7 @@ unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
     let fuse = (readl(SID_INFO) >> 8) & 0x4;
     println!("ddr_efuse_type: 0x{:x}", fuse);
     if (para.dram_tpr13 >> 18) & 0x3 > 0 {
+        println!("phy cfg 7");
         memcpy_self(&mut PHY_CFG0, &mut PHY_CFG7, 22);
     } else {
         match fuse {
@@ -378,8 +380,8 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
         0 => para.dram_clk,
         _ => para.dram_tpr9,
     };
-    let n = 66; // (clk * 2) / 24; // FIXME: Why is this always 0?
-    println!("clk {} / n {}", clk, n);
+    let n = (clk * 2) / 24;
+    println!("clk {} / div {}", clk, n);
 
     // set VCO clock divider
     let mut val = read_volatile(PLL_DDR_CTRL as *mut u32);
@@ -1165,7 +1167,6 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     eye_delay_compensation(para);
 
     //set PLL SSCG ?
-    //
     val = readl(PLL_SSCG_X);
     match dqs_gating_mode {
         1 => {
@@ -1303,9 +1304,9 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     // Check for training error
     val = readl(PGSR0);
     if ((val >> 20) & 0xff != 0) && (val & 0x100000) != 0 {
+        // FIXME: we get to this place :)
         // return Err("DRAM initialisation error : 0"); // TODO
         return Err("ZQ calibration error, check external 240 ohm resistor.");
-        // printf("ZQ calibration error, check external 240 ohm resistor.\n");
     }
 
     // STATR = Zynq STAT? Wait for status 'normal'?
@@ -1332,18 +1333,16 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
     Ok(())
 }
 
+// FIXME: Cannot you see that this could be more elegant?
 // Perform an init of the controller. This is actually done 3 times. The first
 // time to establish the number of ranks and DQ width. The second time to
 // establish the actual ram size. The third time is final one, with the final
 // settings.
 fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     unsafe {
-        println!("sys_init");
         mctl_sys_init(para);
-        println!("vrefzq_init");
         mctl_vrefzq_init(para);
     }
-    println!("com_init");
     mctl_com_init(para);
     unsafe {
         mctl_phy_ac_remapping(para);
@@ -1353,7 +1352,7 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
 }
 
 fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
-    mctl_core_init(para)?; // TODO: Why is this called all the time?
+    mctl_core_init(para)?;
 
     let maxrank = match para.dram_para2 & 0xf000 {
         0 => 1,
@@ -1400,7 +1399,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     para.dram_para2 = (para.dram_para2 & 0xfffffff0) | 0x1000;
     para.dram_tpr13 = (s1 & 0xfffffff7) | 0x5; // set DQS probe mode
 
-    mctl_core_init(para)?; // TODO: Why is this called all the time?
+    mctl_core_init(para)?;
 
     let unknown3 = unsafe { read_volatile(PGSR0 as *mut u32) };
     if unknown3 & (1 << 20) == 0 {
@@ -1421,22 +1420,13 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
 /// `dram_tpr13` to reflect that the sizes are now known: a re-init will not
 /// repeat the autoscan.
 fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str> {
-    println!("DRAM 14");
     if para.dram_tpr13 & (1 << 14) == 0 {
-        println!("DRAM 14 no");
         auto_scan_dram_rank_width(para)?
     }
-    /*
-    println!("DRAM 0");
     if para.dram_tpr13 & (1 << 0) == 0 {
-        println!("DRAM 0 no");
-        // This is not run with current hardcoded params
         auto_scan_dram_size(para)?
     }
-    */
-    println!("DRAM 15");
     if (para.dram_tpr13 & (1 << 15)) == 0 {
-        println!("DRAM 15 no; adjusting");
         para.dram_tpr13 |= 0x6003;
     }
     Ok(())
