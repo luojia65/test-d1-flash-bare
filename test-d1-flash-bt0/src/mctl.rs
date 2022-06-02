@@ -1406,7 +1406,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     */
 
     // TODO: do the rest
-    for rank in 0..maxrank - 1 {
+    for rank in 0..maxrank {
         // Set row mode
         let mut rval = readl(mc_work_mode);
         rval &= 0xfffff0f3;
