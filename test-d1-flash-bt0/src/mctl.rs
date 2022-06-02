@@ -350,11 +350,11 @@ unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
         _ => 0,
     };
     let vol = 25; // XXX
-    let mut reg = read_volatile(SYS_LDO_CTRL_REG as *mut u32);
+    let mut reg = readl(SYS_LDO_CTRL_REG);
     reg &= !(0xff00);
     reg |= vol << 8;
     reg &= !(0x200000);
-    write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
+    writel(SYS_LDO_CTRL_REG, reg);
     sdelay(1);
 }
 
