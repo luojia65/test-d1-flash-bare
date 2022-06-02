@@ -97,7 +97,7 @@ const PHY_AC_MAP4: usize = 0x310250c;
 // *_BASE?
 const PIR: usize = MSI_MEMC_BASE + 0x1000; // 0x3103000
 const UNKNOWN15: usize = MSI_MEMC_BASE + 0x1004; // 0x3103004
-const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
+const MCTL_CLK: usize = MSI_MEMC_BASE + 0x100c; // 0x310300c
 const PGSR0: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
 
 const STATR_X: usize = MSI_MEMC_BASE + 0x1018; // 0x3103018
@@ -390,9 +390,10 @@ fn dram_disable_all_master() {
 // the MBUS and sdram.
 fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
     // FIXME: This is a bit weird, especially the scaling down and up etc
-    let clk = match para.dram_tpr13 & (1 << 6) {
-        0 => para.dram_clk,
-        _ => para.dram_tpr9,
+    let clk = if para.dram_tpr13 & (1 << 6) != 0 {
+        para.dram_tpr9
+    } else {
+        para.dram_clk
     };
     let n = (clk * 2) / 24;
     println!("clk {} / div {}", clk, n);
@@ -425,14 +426,13 @@ fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
     val |= 0x80000000; // turn clock on
     writel(DRAM_CLK, val);
 
-    return n * 24;
+    n * 24
 }
 
+// Main purpose of sys_init seems to be to initalise the clocks for
+// the sdram controller.
 // TODO: verify this
 fn mctl_sys_init(para: &mut dram_parameters) {
-    // TODO: What is s1 for?
-    // s1 = 0x02001000
-
     // assert MBUS reset
     let val = readl(MBUS_CLK);
     writel(MBUS_CLK, val & 0xbfffffff);
@@ -454,17 +454,12 @@ fn mctl_sys_init(para: &mut dram_parameters) {
     writel(DRAM_CLK, val);
     sdelay(10);
 
-    println!("ccm_set_pll_ddr_clk");
     // set ddr pll clock
     // NOTE: This passes an additional `0` in the original, but it's unused
-    let val = ccm_set_pll_ddr_clk(para);
-    para.dram_clk = val >> 1;
-    println!("ddr_clk {}", val >> 1);
+    para.dram_clk = ccm_set_pll_ddr_clk(para) >> 1;
     sdelay(100);
-    println!("disable_all_master");
     dram_disable_all_master();
 
-    println!("SDRAM reset");
     // release sdram reset
     let val = readl(DRAM_BGR);
     writel(DRAM_BGR, val | 0x00010000);
@@ -476,8 +471,8 @@ fn mctl_sys_init(para: &mut dram_parameters) {
     // turn bit 30 back on [?]
     let val = readl(DRAM_CLK);
     writel(DRAM_CLK, val | 0x40000000);
+    sdelay(5);
 
-    println!("SDRAM clock gate ON");
     // turn on sdram clock gate
     let val = readl(DRAM_BGR);
     writel(DRAM_BGR, val | 0x0000001); // (1<<0);
@@ -491,7 +486,7 @@ fn mctl_sys_init(para: &mut dram_parameters) {
     sdelay(5);
 
     // mCTL clock enable
-    writel(MCTL_CLK_EN, 0x00008000);
+    writel(MCTL_CLK, 0x00008000);
     sdelay(10);
 }
 
