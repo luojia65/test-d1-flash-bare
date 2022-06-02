@@ -84,6 +84,10 @@ const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
 const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
 
+const DAT00IOCR: usize = MSI_MEMC_BASE + 0x1310; // 0x3103310
+const DAT01IOCR: usize = MSI_MEMC_BASE + 0x1390; // 0x3103390
+const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
+
 const PHY_AC_MAP1: usize = 0x3102500;
 const PHY_AC_MAP2: usize = 0x3102504;
 const PHY_AC_MAP3: usize = 0x3102508;
@@ -117,6 +121,8 @@ const PITMG0: usize = MSI_MEMC_BASE + 0x1080; // 0x3103080;
 const UNKNOWN13: usize = MSI_MEMC_BASE + 0x108c; // 0x310308c;
 const RFSHTMG: usize = MSI_MEMC_BASE + 0x1090; // 0x3103090;
 const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
+
+const PGCR0: usize = MSI_MEMC_BASE + 0x1100; // 0x3103100
 
 const PLL_SSCG_X: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
 const UNKNOWN14: usize = MSI_MEMC_BASE + 0x110c; // 0x310310c
@@ -1028,8 +1034,88 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     writel(RFSHCTL1, 0x0fff0000 & (trefi << 15) as u32);
 }
 
-// TODO
-fn eye_delay_compensation(para: &mut dram_parameters) {}
+// TODO: verify
+fn eye_delay_compensation(para: &mut dram_parameters) {
+    let mut val: u32;
+
+    // DATn0IOCR
+    for i in 0..8 {
+        let ptr = DAT00IOCR + i * 4;
+        val = readl(ptr);
+        val |= (para.dram_tpr11 << 9) & 0x1e00;
+        val |= (para.dram_tpr12 << 1) & 0x001e;
+        writel(ptr, val);
+    }
+
+    // DATn1IOCR
+    for i in 0..8 {
+        let ptr = DAT01IOCR + i * 4;
+        val = readl(ptr);
+        val |= ((para.dram_tpr11 >> 4) << 9) & 0x1e00;
+        val |= ((para.dram_tpr12 >> 4) << 1) & 0x001e;
+        writel(ptr, val);
+    }
+
+    // PGCR0: assert AC loopback FIFO reset
+    val = readl(PGCR0);
+    writel(PGCR0, val & 0xfbffffff);
+
+    // ??
+    val = readl(0x3103334);
+    val |= ((para.dram_tpr11 >> 16) << 9) & 0x1e00;
+    val |= ((para.dram_tpr12 >> 16) << 1) & 0x001e;
+    writel(0x3103334, val);
+
+    val = readl(0x3103338);
+    val |= ((para.dram_tpr11 >> 16) << 9) & 0x1e00;
+    val |= ((para.dram_tpr12 >> 16) << 1) & 0x001e;
+    writel(0x3103338, val);
+
+    val = readl(0x31033b4);
+    val |= ((para.dram_tpr11 >> 20) << 9) & 0x1e00;
+    val |= ((para.dram_tpr12 >> 20) << 1) & 0x001e;
+    writel(0x31033b4, val);
+
+    val = readl(0x31033b8);
+    val |= ((para.dram_tpr11 >> 20) << 9) & 0x1e00;
+    val |= ((para.dram_tpr12 >> 20) << 1) & 0x001e;
+    writel(0x31033b8, val);
+
+    val = readl(0x310333c);
+    val |= ((para.dram_tpr11 >> 16) << 25) & 0x1e000000;
+    writel(0x310333c, val);
+
+    val = readl(0x31033bc);
+    val |= ((para.dram_tpr11 >> 20) << 25) & 0x1e000000;
+    writel(0x31033bc, val);
+
+    // PGCR0: release AC loopback FIFO reset
+    val = readl(PGCR0);
+    writel(PGCR0, val | 0x04000000);
+
+    sdelay(1);
+
+    for i in 0..14 {
+        let ptr = 0x3103240 + i * 4;
+        val = readl(ptr);
+        val |= ((para.dram_tpr10 >> 4) << 8) & 0x0f00;
+        writel(ptr, val);
+    }
+
+    for i in 0..5 {
+        let ptr = 0x3103228 + i * 4;
+        val = readl(ptr);
+        val |= ((para.dram_tpr10 >> 4) << 8) & 0x0f00;
+        writel(ptr, val);
+    }
+
+    let val = readl(0x3103218);
+    writel(0x3103218, val | (para.dram_tpr10 << 8) & 0x0f00);
+    let val = readl(0x310321c);
+    writel(0x310321c, val | (para.dram_tpr10 << 8) & 0x0f00);
+    let val = readl(0x3103280);
+    writel(0x3103280, val | ((para.dram_tpr10 >> 12) << 8) & 0x0f00);
+}
 
 // Init the controller channel. The key part is placing commands in the main
 // command register (PIR, 0x3103000) and checking command status (PGSR0, 0x3103010).
