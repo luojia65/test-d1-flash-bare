@@ -329,11 +329,7 @@ unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
     reg |= vol << 8;
     reg &= !(0x200000);
     write_volatile(SYS_LDO_CTRL_REG as *mut u32, reg);
-    // TODO
-    // sdelay(1);
-    for _ in 0..1_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(1);
 }
 
 fn set_ddr_voltage(val: usize) -> usize {
@@ -344,20 +340,14 @@ unsafe fn dram_enable_all_master() {
     write_volatile(DRAM_MASTER_CTL1 as *mut u32, 0xffffffff);
     write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0xff);
     write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0xffff);
-    // sdelay(10); // TODO
-    for _ in 0..10_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(10);
 }
 
 unsafe fn dram_disable_all_master() {
     write_volatile(DRAM_MASTER_CTL1 as *mut u32, 1);
     write_volatile(DRAM_MASTER_CTL2 as *mut u32, 0);
     write_volatile(DRAM_MASTER_CTL3 as *mut u32, 0);
-    // sdelay(10); // TODO
-    for _ in 0..10_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(10);
 }
 
 // Purpose of this routine seems to be to initialize the PLL driving
@@ -387,11 +377,7 @@ unsafe fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
 
     // wait for PLL to lock
     while read_volatile(PLL_DDR_CTRL as *mut u32) == 0 {}
-
-    // sdelay(20); // TODO
-    for _ in 0..20_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(20);
 
     // enable PLL output
     let val = read_volatile(PLL_CPU_CTRL as *mut u32);
@@ -430,10 +416,7 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_CLK as *mut u32, val);
     val |= 0x08000000;
     write_volatile(DRAM_CLK as *mut u32, val);
-    // sdelay(10); // TODO
-    for _ in 0..10_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(10);
 
     println!("ccm_set_pll_ddr_clk");
     // set ddr pll clock
@@ -441,10 +424,7 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     let val = ccm_set_pll_ddr_clk(para);
     para.dram_clk = val >> 1;
     println!("ddr_clk {}", val >> 1);
-    // sdelay(100); // TODO
-    for _ in 0..100_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(100);
     println!("disable_all_master");
     dram_disable_all_master();
 
@@ -472,17 +452,11 @@ unsafe fn mctl_sys_init(para: &mut dram_parameters) {
     write_volatile(DRAM_CLK as *mut u32, val);
     val |= 0x88000000;
     write_volatile(DRAM_CLK as *mut u32, val);
-    // sdelay(5); // TODO
-    for _ in 0..5_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(5);
 
     // mCTL clock enable
     write_volatile(MCTL_CLK_EN as *mut u32, 0x00008000);
-    // sdelay(10); // TODO
-    for _ in 0..10_000 {
-        core::arch::asm!("nop")
-    }
+    sdelay(10);
 }
 
 // Set the Vref mode for the controller
@@ -655,6 +629,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                     trp = trcd; // 15
                 }
             }
+            /*
             2 => {
                 // DDR2
                 tfaw = auto_cal_timing(50, frq2);
@@ -747,6 +722,8 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                 trcd = 6;
                 trrd = 3;
             }
+            */
+            _ => {}
         }
         //assign the value back to the DRAM structure
         tccd = 2;
@@ -796,6 +773,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     dmr3 = para.dram_mr3;
 
     match dtype {
+        /*
         2 =>
         // DDR2
         //	L59:
@@ -829,6 +807,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
             tcwl = 0;
             mr1 = dmr1;
         }
+        */
         3 =>
         // DDR3
         //	L57:
@@ -876,6 +855,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
             tmrw = 0;
             mr3 = 0;
         }
+        /*
         6 =>
         // LPDDR2
         //	L61:
@@ -940,6 +920,8 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
             mr0 = 0;
         }
 
+        _ => {}
+        */
         _ =>
         //	L84:
         {
@@ -1234,8 +1216,8 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
         writel(PIR, 0x52); // prep PHY reset + PLL init + z-cal
         writel(PIR, 0x53); // Go
 
-        while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
-                                               // sdelay(10); // TODO
+        while (readl(PGSR0) & 0x1) == 0 {} // wait for IDONE
+        sdelay(10);
 
         // 0x520 = prep DQS gating + DRAM init + d-cal
         val = if para.dram_type == 3 {0x5a0	 } // + DRAM reset
@@ -1257,7 +1239,7 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
 
     sdelay(10);
 
-    while (readl(0x3103010) & 0x1) == 0 {} // wait for IDONE
+    while (readl(PGSR0) & 0x1) == 0 {} // wait for IDONE
 
     if readl(0x70005d4) & (1 << 16) > 0 {
         val = readl(UNKNOWN14);
@@ -1292,13 +1274,13 @@ fn mctl_channel_init(ch_index: u32, para: &mut dram_parameters) -> Result<(), &'
             sdelay(1);
             writel(PIR, 0x401);
 
-            while (readl(0x3103010) & 0x1) == 0 {}
+            while (readl(PGSR0) & 0x1) == 0 {}
         }
     }
 
     // Check for training error
-    val = readl(0x3103010);
-    if ((val >> 20) & 0xff > 0) && (val & 0x100000) > 0 {
+    val = readl(PGSR0);
+    if ((val >> 20) & 0xff != 0) && (val & 0x100000) != 0 {
         // return Err("DRAM initialisation error : 0"); // TODO
         return Err("ZQ calibration error, check external 240 ohm resistor.");
         // printf("ZQ calibration error, check external 240 ohm resistor.\n");
@@ -1422,12 +1404,14 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
         println!("DRAM 14 no");
         auto_scan_dram_rank_width(para)?
     }
+    /*
     println!("DRAM 0");
     if para.dram_tpr13 & (1 << 0) == 0 {
         println!("DRAM 0 no");
         // This is not run with current hardcoded params
         auto_scan_dram_size(para)?
     }
+    */
     println!("DRAM 15");
     if (para.dram_tpr13 & (1 << 15)) == 0 {
         println!("DRAM 15 no; adjusting");
