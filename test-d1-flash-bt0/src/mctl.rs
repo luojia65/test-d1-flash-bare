@@ -89,10 +89,6 @@ const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
 const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
 
-const DAT00IOCR: usize = MSI_MEMC_BASE + 0x1310; // 0x3103310
-const DAT01IOCR: usize = MSI_MEMC_BASE + 0x1390; // 0x3103390
-const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
-
 const PHY_AC_MAP1: usize = 0x3102500;
 const PHY_AC_MAP2: usize = 0x3102504;
 const PHY_AC_MAP3: usize = 0x3102508;
@@ -100,6 +96,7 @@ const PHY_AC_MAP4: usize = 0x310250c;
 
 // *_BASE?
 const PIR: usize = MSI_MEMC_BASE + 0x1000; // 0x3103000
+const UNKNOWN15: usize = MSI_MEMC_BASE + 0x1004; // 0x3103004
 const MCTL_CLK_EN: usize = MSI_MEMC_BASE + 0x100c; // 0x310300C
 const PGSR0: usize = MSI_MEMC_BASE + 0x1010; // 0x3103010
 
@@ -127,6 +124,8 @@ const UNKNOWN13: usize = MSI_MEMC_BASE + 0x108c; // 0x310308c;
 const RFSHTMG: usize = MSI_MEMC_BASE + 0x1090; // 0x3103090;
 const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
 
+const UNKNOWN16: usize = MSI_MEMC_BASE + 0x10c0; // 0x31030c0
+
 const PGCR0: usize = MSI_MEMC_BASE + 0x1100; // 0x3103100
 
 const MRCTRL0: usize = MSI_MEMC_BASE + 0x1108; // 0x3103108
@@ -139,10 +138,15 @@ const DQS_GATING_X: usize = MSI_MEMC_BASE + 0x111c; // 0x310311c
 
 const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
 const UNDOC1: usize = MSI_MEMC_BASE + 0x1208; // 0x3103208;
-const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
+
+const DAT00IOCR: usize = MSI_MEMC_BASE + 0x1310; // 0x3103310
 const DX0GCR0: usize = MSI_MEMC_BASE + 0x1344; // 0x3103344
+const UNKNOWN4: usize = MSI_MEMC_BASE + 0x1348; // 0x3103348
 const DX1GCR0: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
+const DAT01IOCR: usize = MSI_MEMC_BASE + 0x1390; // 0x3103390
+
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
+const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
 
 // TODO: *_BASE ?
 const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
@@ -642,8 +646,6 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
                 twr = auto_cal_timing(8, frq2);
                 trcd = auto_cal_timing(15, frq2);
                 twtr = twr + 2; // + 2 ? XXX
-                println!("trfc should be 139 {}", trfc);
-                println!("trefi should be 97 {}", trefi);
                 if twr < 2 {
                     twtr = 2
                 };
@@ -1212,8 +1214,9 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         }
     }
 
+    /*
     if para.dram_type == 6 || para.dram_type == 7 {
-        val = readl(DQS_GATING_X);
+        let val = readl(DQS_GATING_X);
         if dqs_gating_mode == 1 {
             val &= 0xf7ffff3f;
             val |= 0x80000000;
@@ -1223,30 +1226,33 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         }
         writel(DQS_GATING_X, val);
     }
+    */
 
-    val = readl(0x31030c0);
+    val = readl(UNKNOWN16);
     val &= 0xf0000000;
     val |= if para.dram_para2 & (1 << 12) > 0 {
         0x03000001
     } else {
         0x01000007
     }; // 0x01003087 XXX
-    writel(0x31030c0, val);
+    writel(UNKNOWN16, val);
 
     if readl(SOME_STATUS) & (1 << 16) > 0 {
         val = readl(SOME_OTHER);
-        writel(0x7010250, val & 0xfffffffd);
+        writel(SOME_OTHER, val & 0xfffffffd);
         sdelay(10);
     }
 
+    const ZQ_CFG: usize = 0x3103140;
+
     // Set ZQ config
-    val = readl(0x3103140) & 0xfc000000;
+    val = readl(ZQ_CFG) & 0xfc000000;
     val |= para.dram_zq & 0x00ffffff;
     val |= 0x02000000;
-    writel(0x3103140, val);
+    writel(ZQ_CFG, val);
 
     // Initialise DRAM controller
-    if dqs_gating_mode == 1 {
+    val = if dqs_gating_mode == 1 {
         writel(PIR, 0x52); // prep PHY reset + PLL init + z-cal
         writel(PIR, 0x53); // Go
 
@@ -1254,23 +1260,31 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         sdelay(10);
 
         // 0x520 = prep DQS gating + DRAM init + d-cal
-        val = if para.dram_type == 3 {0x5a0	 } // + DRAM reset
-					      else { 0x520 };
+        if para.dram_type == 3 {
+            0x5a0
+        }
+        // + DRAM reset
+        else {
+            0x520
+        }
     } else {
         if (readl(SOME_STATUS) & (1 << 16)) == 0 {
             // prep DRAM init + PHY reset + d-cal + PLL init + z-cal
-            val = if para.dram_type == 3 { 0x1f2	} // + DRAM reset
-						     else { 0x172 };
+            if para.dram_type == 3 {
+                0x1f2
+            }
+            // + DRAM reset
+            else {
+                0x172
+            }
         } else {
             // prep PHY reset + d-cal + z-cal
-            val = 0x62;
+            0x62
         }
-    }
+    };
 
     writel(PIR, val); // Prep
-    val |= 1;
-    writel(PIR, val); // Go
-
+    writel(PIR, val | 1); // Go
     sdelay(10);
 
     while (readl(PGSR0) & 0x1) == 0 {} // wait for IDONE
@@ -1282,16 +1296,16 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         writel(UNKNOWN14, val);
         sdelay(10);
 
-        val = readl(0x3103004);
-        writel(0x3103004, val | 0x1);
+        val = readl(UNKNOWN15);
+        writel(UNKNOWN15, val | 0x1);
         while (readl(STATR_X) & 0x7) != 0x3 {}
 
-        val = readl(0x7010250);
-        writel(0x7010250, val & 0xfffffffe);
+        val = readl(SOME_OTHER);
+        writel(SOME_OTHER, val & 0xfffffffe);
         sdelay(10);
 
-        val = readl(0x3103004);
-        writel(0x3103004, val & 0xfffffffe);
+        val = readl(UNKNOWN15);
+        writel(UNKNOWN15, val & 0xfffffffe);
         while (readl(STATR_X) & 0x7) != 0x1 {}
         sdelay(15);
 
@@ -1316,6 +1330,7 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     val = readl(PGSR0);
     if ((val >> 20) & 0xff != 0) && (val & 0x100000) != 0 {
         // FIXME: we get to this place :)
+        println!("val {:x}", val);
         // return Err("DRAM initialisation error : 0"); // TODO
         return Err("ZQ calibration error, check external 240 ohm resistor.");
     }
@@ -1398,8 +1413,52 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     return Err("auto scan dram size failed !");
 }
 
+// The below routine reads the command status register to extract
+// DQ width and rank count. This follows the DQS training command in
+// channel_init. If error bit 22 is reset, we have two ranks and full DQ.
+// If there was an error, figure out whether it was half DQ, single rank,
+// or both. Set bit 12 and 0 in dram_para2 with the results.
 fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
-    return Ok(());
+    if readl(PGSR0) & (1 << 22) != 0 {
+        let dx0 = (readl(UNKNOWN4) >> 24) & 0x3;
+        let dx1 = (readl(UNKNOWN5) >> 24) & 0x3;
+
+        if dx0 == 2 {
+            let mut rval = para.dram_para2;
+            rval &= 0xffff0ff0;
+            if dx0 != dx1 {
+                rval |= 0x1;
+                para.dram_para2 = rval;
+                // println!("[AUTO DEBUG] single rank and half DQ!");
+                return Ok(());
+            }
+            para.dram_para2 = rval;
+            // NOTE: D1 should do this here
+            // println!("[AUTO DEBUG] single rank and full DQ!");
+            return Ok(());
+        } else if dx0 == 0 {
+            let mut rval = para.dram_para2;
+            rval &= 0xfffffff0; // l 7920
+            rval |= 0x00001001; // l 7918
+            para.dram_para2 = rval;
+            // println!("[AUTO DEBUG] dual rank and half DQ!");
+            return Ok(());
+        } else {
+            if para.dram_tpr13 & (1 << 29) != 0 {
+                // l 7935
+                // println!("DX0 state:{}", dx0);
+                // println!("DX1 state:{}", dx1);
+            }
+            return Err("dqs gate detect");
+        }
+    } else {
+        let mut rval = para.dram_para2;
+        rval &= 0xfffffff0;
+        rval |= 0x00001000;
+        para.dram_para2 = rval;
+        // println!("[AUTO DEBUG] two rank and full DQ!\n");
+    }
+    Ok(())
 }
 
 fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
