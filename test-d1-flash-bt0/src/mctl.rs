@@ -119,11 +119,14 @@ const DRAMTMG5: usize = MSI_MEMC_BASE + 0x106c; // 0x310306c;
 const DRAMTMG6: usize = MSI_MEMC_BASE + 0x1070; // 0x3103070;
 const DRAMTMG7: usize = MSI_MEMC_BASE + 0x1074; // 0x3103074;
 const DRAMTMG8: usize = MSI_MEMC_BASE + 0x1078; // 0x3103078;
+const UNKNOWN8: usize = MSI_MEMC_BASE + 0x107c; // 0x310307c
 const PITMG0: usize = MSI_MEMC_BASE + 0x1080; // 0x3103080;
 const UNKNOWN13: usize = MSI_MEMC_BASE + 0x108c; // 0x310308c;
 const RFSHTMG: usize = MSI_MEMC_BASE + 0x1090; // 0x3103090;
 const RFSHCTL1: usize = MSI_MEMC_BASE + 0x1094; // 0x3103094;
 
+const UNKNOWN10: usize = MSI_MEMC_BASE + 0x109c; // 0x310309c
+const UNKNOWN11: usize = MSI_MEMC_BASE + 0x10a0; // 0x31030a0
 const UNKNOWN16: usize = MSI_MEMC_BASE + 0x10c0; // 0x31030c0
 
 const PGCR0: usize = MSI_MEMC_BASE + 0x1100; // 0x3103100
@@ -137,6 +140,7 @@ const IOCVR1: usize = MSI_MEMC_BASE + 0x1114; // 0x3103114
 const DQS_GATING_X: usize = MSI_MEMC_BASE + 0x111c; // 0x310311c
 
 const UNKNOWN9: usize = MSI_MEMC_BASE + 0x1120; // 0x3103120
+const ZQ_CFG: usize = MSI_MEMC_BASE + 0x1140; // 0x3103140
 const UNDOC1: usize = MSI_MEMC_BASE + 0x1208; // 0x3103208;
 
 const DAT00IOCR: usize = MSI_MEMC_BASE + 0x1310; // 0x3103310
@@ -1235,8 +1239,6 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
         sdelay(10);
     }
 
-    const ZQ_CFG: usize = 0x3103140;
-
     // Set ZQ config
     val = readl(ZQ_CFG) & 0xfc000000;
     val |= para.dram_zq & 0x00ffffff;
@@ -1764,6 +1766,48 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     }
     let mem_size = rc;
     println!("DRAM SIZE ={} M", mem_size);
+
+    // TODO: define constants
+    // Purpose ??
+    if para.dram_tpr13 & (1 << 30) != 0 {
+        let rc = readl(para.dram_tpr8 as usize);
+        writel(UNKNOWN11, if rc == 0 { 0x10000200 } else { rc });
+        writel(UNKNOWN10, 0x40a);
+        writel(UNKNOWN15, readl(UNKNOWN15) | 1);
+        println!("Enable Auto SR");
+    } else {
+        writel(UNKNOWN11, readl(UNKNOWN11) & 0xffff0000);
+        writel(UNKNOWN15, readl(UNKNOWN15) & (!0x1));
+    }
+
+    // Pupose ??
+    rc = readl(PGCR0) & !(0xf000);
+    if (para.dram_tpr13 & 0x200) == 0 {
+        if para.dram_type != 6 {
+            writel(PGCR0, rc);
+        }
+    } else {
+        writel(PGCR0, rc | 0x5000);
+    }
+
+    writel(ZQ_CFG, readl(ZQ_CFG) | (1 << 31));
+    if para.dram_tpr13 & (1 << 8) != 0 {
+        writel(0x31030b8, readl(ZQ_CFG) | 0x300);
+    }
+
+    let mut rc = readl(MRCTRL0);
+    if para.dram_tpr13 & (1 << 16) != 0 {
+        rc &= 0xffffdfff;
+    } else {
+        rc |= 0x00002000;
+    }
+    writel(MRCTRL0, rc);
+
+    // Purpose ??
+    if para.dram_type == 7 {
+        let rc = readl(UNKNOWN8) & 0xfff0ffff;
+        writel(UNKNOWN8, rc | 0x0001000);
+    }
 
     // TODO: rest
     mem_size as usize
