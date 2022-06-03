@@ -183,7 +183,7 @@ extern "C" fn main() {
 
     let id = flash.read_id();
     println!(
-        " | SPI flash\n  \\ vendor ID: {:x}\n  \\ flash ID = {:x}{:x}\n",
+        " | SPI flash\n  \\ vendor ID: {:x}\n   \\ flash ID: {:x}{:x}\n",
         id[2] << 1,
         id[0] << 1,
         id[1] << 1,
