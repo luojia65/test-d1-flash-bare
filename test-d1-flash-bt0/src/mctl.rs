@@ -1766,7 +1766,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     println!("DRAM SIZE ={} M", mem_size);
 
     // TODO: rest
-    return 0;
+    mem_size as usize
 }
 
 pub fn init() -> usize {
