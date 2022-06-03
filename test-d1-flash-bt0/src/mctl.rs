@@ -376,6 +376,8 @@ fn set_ddr_voltage(val: usize) -> usize {
     val
 }
 
+fn handler_super_standby() {}
+
 fn dram_enable_all_master() {
     writel(DRAM_MASTER_CTL1, 0xffffffff);
     writel(DRAM_MASTER_CTL2, 0xff);
@@ -1626,6 +1628,38 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     Ok(())
 }
 
+const SDRAM_BASE: usize = 0x40000000;
+
+fn dramc_simple_wr_test(mem_mb: u32, len: u32) -> Result<(), &'static str> {
+    let offs: usize = (mem_mb as usize >> 1) << 18; // half of memory size
+    let patt1: u32 = 0x01234567;
+    let patt2: u32 = 0xfedcba98;
+
+    for i in 0..len {
+        let addr = SDRAM_BASE + i as usize;
+        writel(addr, patt1 + i);
+        writel(addr + offs, patt2 + i);
+    }
+
+    for i in 0..len {
+        let addr = SDRAM_BASE + i as usize;
+        let val = readl(addr);
+        let exp = patt1 + i;
+        if val != exp {
+            println!("{:x} != {:x} at address {:x}", val, exp, addr);
+            return Err("DRAM simple test FAIL.");
+        }
+        let val = readl(addr + offs);
+        let exp = patt2 + i;
+        if val != exp {
+            println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
+            return Err("DRAM simple test FAIL.");
+        }
+    }
+    println!("DRAM simple test OK.");
+    Ok(())
+}
+
 /* STEP 2 */
 /// This routine determines the SDRAM topology.
 ///
@@ -1809,7 +1843,21 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         writel(UNKNOWN8, rc | 0x0001000);
     }
 
-    // TODO: rest
+    dram_enable_all_master();
+
+    let len = 4096; // NOTE: a commented call outside the if uses 64 in C code
+    if para.dram_tpr13 & (1 << 28) != 0 {
+        rc = readl(SOME_STATUS);
+        if rc & (1 << 16) == 0 {
+            if let Err(msg) = dramc_simple_wr_test(mem_size, len) {
+                println!("[WRITE TEST] {}", msg);
+                return 0;
+            }
+        }
+    }
+
+    handler_super_standby();
+
     mem_size as usize
 }
 
