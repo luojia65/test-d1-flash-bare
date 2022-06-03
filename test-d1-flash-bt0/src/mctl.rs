@@ -1636,23 +1636,23 @@ fn dramc_simple_wr_test(mem_mb: u32, len: u32) -> Result<(), &'static str> {
     let patt2: u32 = 0xfedcba98;
 
     for i in 0..len {
-        let addr = SDRAM_BASE + i as usize;
+        let addr = SDRAM_BASE + 4 * i as usize;
         writel(addr, patt1 + i);
         writel(addr + offs, patt2 + i);
     }
 
     for i in 0..len {
-        let addr = SDRAM_BASE + i as usize;
+        let addr = SDRAM_BASE + 4 * i as usize;
         let val = readl(addr);
         let exp = patt1 + i;
         if val != exp {
-            println!("{:x} != {:x} at address {:x}", val, exp, addr);
+            // println!("{:x} != {:x} at address {:x}", val, exp, addr);
             return Err("DRAM simple test FAIL.");
         }
         let val = readl(addr + offs);
         let exp = patt2 + i;
         if val != exp {
-            println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
+            // println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
             return Err("DRAM simple test FAIL.");
         }
     }
@@ -1693,7 +1693,7 @@ fn dramc_get_dram_size() -> u32 {
     temp += (low >> 2) & 0x3; // bank count - 2
     temp -= 14; // 1MB = 20 bits, minus above 6 = 14
     let size0 = 1 << temp;
-    println!("low {} size0 {}", low, size0);
+    // println!("low {} size0 {}", low, size0);
 
     temp = low & 0x3; // rank count = 0? -> done
     if temp == 0 {
