@@ -4,6 +4,11 @@
 #![feature(once_cell)]
 #![no_std]
 #![no_main]
+
+use core::{arch::asm, panic::PanicInfo};
+use d1_pac::Peripherals;
+use embedded_hal::digital::blocking::OutputPin;
+
 extern crate alloc;
 #[macro_use]
 mod logging;
@@ -11,16 +16,16 @@ mod ccu;
 mod gpio;
 mod jtag;
 mod mctl;
+mod spi;
+mod spi_flash;
 mod time;
 mod uart;
+
 use crate::ccu::Clocks;
 use crate::time::U32Ext;
 use buddy_system_allocator::LockedHeap;
-use core::arch::asm;
-use core::panic::PanicInfo;
-
-use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
+use spi::Spi;
+use spi_flash::SpiNand;
 
 const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -33,6 +38,11 @@ static mut HEAP_SPACE: [u8; SBI_HEAP_SIZE] = [0; SBI_HEAP_SIZE];
 #[global_allocator]
 static SBI_HEAP: LockedHeap<32> = LockedHeap::empty();
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[link_section = ".head.text"]
 #[export_name = "head_jump"]
@@ -80,6 +90,11 @@ pub static HEAD_DATA: HeadData = HeadData {
     string_pool: [0; 13],
 };
 
+/// Jump over head data to executable code.
+///
+/// # Safety
+///
+/// Naked function.
 #[naked]
 #[export_name = "start"]
 #[link_section = ".text.entry"]
@@ -126,6 +141,9 @@ extern "C" fn main() {
     use jtag::Jtag;
     use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
+    let clocks = Clocks {
+        uart_clock: 24_000_000.hz(), // hard coded
+    };
     let gpio = Gpio::new(p.GPIO);
 
     // configure jtag interface
@@ -144,9 +162,6 @@ extern "C" fn main() {
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
     let rx = gpio.portb.pb9.into_function_6();
-    let clocks = Clocks {
-        uart_clock: 24_000_000.hz(), // hard coded
-    };
     let config = Config {
         baudrate: 115200.bps(),
         wordlength: WordLength::Eight,
@@ -156,8 +171,26 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    println!("OREBOOT");
-    println!("Test");
+    println!("oreboot");
+
+    // prepare spi interface
+    let sck = gpio.portc.pc2.into_function_2();
+    let scs = gpio.portc.pc3.into_function_2();
+    let mosi = gpio.portc.pc4.into_function_2();
+    let miso = gpio.portc.pc5.into_function_2();
+    let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
+    let mut flash = SpiNand::new(spi);
+
+    let id = flash.read_id();
+    println!(
+        " | SPI flash\n  \\ vendor ID: {:x}\n  \\ flash ID = {:x}{:x}\n",
+        id[2] << 1,
+        id[0] << 1,
+        id[1] << 1,
+    );
+
+    let spi = flash.free();
+    let (_spi, _pins) = spi.free();
 
     let ram_size = mctl::init();
     println!("How much 🐏? {}", ram_size);

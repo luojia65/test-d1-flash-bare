@@ -294,9 +294,9 @@ static mut PHY_CFG7: [u32; 22] = [
 unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
     // read SID info @ 0x228
     let fuse = (readl(SID_INFO) >> 8) & 0x4;
-    println!("ddr_efuse_type: 0x{:x}", fuse);
+    // println!("ddr_efuse_type: 0x{:x}", fuse);
     if (para.dram_tpr13 >> 18) & 0x3 > 0 {
-        println!("phy cfg 7");
+        // println!("phy cfg 7");
         memcpy_self(&mut PHY_CFG0, &mut PHY_CFG7, 22);
     } else {
         match fuse {
@@ -402,7 +402,7 @@ fn ccm_set_pll_ddr_clk(para: &mut dram_parameters) -> u32 {
         para.dram_clk
     };
     let n = (clk * 2) / 24;
-    println!("clk {} / div {}", clk, n);
+    // println!("clk {} / div {}", clk, n);
 
     // set VCO clock divider
     let mut val = readl(PLL_DDR_CTRL);
@@ -635,7 +635,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
         trefi = (para.dram_tpr2 >> 0) & 0xfff; // [11:0 ]
     } else {
         let frq2 = dfreq >> 1; // s0
-        println!("frq2 {}", frq2);
+                               // println!("frq2 {}", frq2);
         match dtype {
             3 => {
                 // DDR3
@@ -1050,7 +1050,6 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     writel(RFSHCTL1, 0x0fff0000 & (trefi << 15) as u32);
 }
 
-// TODO: verify
 fn eye_delay_compensation(para: &mut dram_parameters) {
     let mut val: u32;
 
@@ -1683,7 +1682,6 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
 // The below routine reads the dram config registers and extracts
 // the number of address bits in each rank available. It then calculates
 // total memory size in MB.
-// TODO: verify
 fn dramc_get_dram_size() -> u32 {
     // MC_WORK_MODE0 (not MC_WORK_MODE, low word)
     let low = readl(MC_WORK_MODE_RANK0_LOW);
@@ -1714,7 +1712,7 @@ fn dramc_get_dram_size() -> u32 {
     temp += (high >> 2) & 0x3; // bank number - 2
     temp -= 14; // 1MB = 20 bits, minus above 6 = 14
     let size1 = 1 << temp;
-    println!("high {} size1 {}", high, size1);
+    // println!("high {} size1 {}", high, size1);
 
     return size0 + size1; // add size of each rank
 }
@@ -1729,7 +1727,6 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         println!("DRAM only have internal ZQ!!");
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
         writel(RES240_CTRL_REG, 0);
-        println!("Rust 🦀 ");
         for _ in 0..20_000_000 {}
     } else {
         writel(ANALOG_SYS_PWROFF_GATING_REG, 0); // 0x7010000 + 0x254; l 9655
@@ -1766,6 +1763,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         }
     }
 
+    /*
     // Print header message (too late)
     println!("DRAM BOOT DRIVE INFO: {}", "V0.24");
     println!("DRAM CLK = {} MHz", para.dram_clk);
@@ -1782,6 +1780,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     } else {
         println!("DRAM ODT value: 0x{:x}.", para.dram_mr1);
     }
+    */
 
     // Init core, final run
     if let Err(msg) = mctl_core_init(para) {
@@ -1791,7 +1790,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Get sdram size
     let mut rc: u32 = para.dram_para2;
-    println!("DRAM RC {}", rc);
+    // println!("DRAM RC {}", rc);
     if rc != 0 {
         rc = (rc & 0x7fff0000) >> 16;
     } else {
@@ -1862,6 +1861,6 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 }
 
 pub fn init() -> usize {
-    println!("DRAM INIT");
+    // println!("DRAM INIT");
     return unsafe { init_dram(&mut DRAM_PARA) };
 }
