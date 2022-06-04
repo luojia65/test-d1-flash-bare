@@ -30,10 +30,10 @@ use spi_flash::SpiNand;
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
-const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
-const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
+const STACK_SIZE: usize = 1 * 1024; // 1KiB
+
 #[link_section = ".bss.uninit"]
-static mut SBI_STACK: [u8; SBI_STACK_SIZE] = [0; SBI_STACK_SIZE];
+static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
 const SBI_HEAP_SIZE: usize = 2 * 1024; // 2KiB
 #[link_section = ".bss.uninit"]
@@ -120,14 +120,16 @@ pub unsafe extern "C" fn start() -> ! {
         // does not init data segment as BT0 runs in sram
         // 3. prepare stack
         "la     sp, {stack}",
-        "li     t0, {per_hart_stack_size}",
+        "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "la     a0, {head_data}",
         "j      {main}",
-        stack = sym SBI_STACK,
-        per_hart_stack_size = const PER_HART_STACK_SIZE,
-        head_data = sym HEAD_DATA,
-        main = sym main,
+        "j      {cleanup}",
+        stack      =   sym SBI_STACK,
+        stack_size = const STACK_SIZE,
+        head_data  =   sym HEAD_DATA,
+        main       =   sym main,
+        cleanup    =   sym cleanup,
         options(noreturn)
     )
 }
@@ -139,6 +141,7 @@ extern "C" fn main() {
             .lock()
             .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
     };
+
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     let p = Peripherals::take().unwrap();
     let clocks = Clocks {
@@ -197,7 +200,10 @@ extern "C" fn main() {
 
     let ram_size = mctl::init();
     println!("How much 🐏? {}", ram_size);
+}
 
+// should jump to dram but not reach there
+extern "C" fn cleanup() -> ! {
     loop {
         unsafe { asm!("wfi") };
     }
