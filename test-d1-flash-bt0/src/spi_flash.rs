@@ -82,6 +82,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     /// 等待忙状态结束。
     #[inline]
     fn wait(&self) {
+        // SPI NOR QPI: C0 P7..P0 is for setting read parameters
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
             core::hint::spin_loop();
         }

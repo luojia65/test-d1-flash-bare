@@ -21,11 +21,14 @@ mod spi_flash;
 mod time;
 mod uart;
 
-use crate::ccu::Clocks;
-use crate::time::U32Ext;
 use buddy_system_allocator::LockedHeap;
+use ccu::Clocks;
+use gpio::Gpio;
+use jtag::Jtag;
 use spi::Spi;
 use spi_flash::SpiNand;
+use time::U32Ext;
+use uart::{Config, Parity, Serial, StopBits, WordLength};
 
 const PER_HART_STACK_SIZE: usize = 1 * 1024; // 1KiB
 const SBI_STACK_SIZE: usize = 1 * PER_HART_STACK_SIZE;
@@ -137,9 +140,6 @@ extern "C" fn main() {
             .init(&HEAP_SPACE as *const _ as usize, SBI_HEAP_SIZE)
     };
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
-    use gpio::Gpio;
-    use jtag::Jtag;
-    use uart::{Config, Parity, Serial, StopBits, WordLength};
     let p = Peripherals::take().unwrap();
     let clocks = Clocks {
         uart_clock: 24_000_000.hz(), // hard coded
