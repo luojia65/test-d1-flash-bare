@@ -171,7 +171,7 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    println!("oreboot");
+    println!("oreboot 🦀");
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
@@ -181,7 +181,10 @@ extern "C" fn main() {
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
     let mut flash = SpiNand::new(spi);
 
+    // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
+    // see flashrom/flashchips.h for details and more
     let id = flash.read_id();
+    // FIXME: The << 1 shouldn't be necessary; how does SPI NOR work?
     println!(
         " | SPI flash\n  \\ vendor ID: {:x}\n   \\ flash ID: {:x}{:x}\n",
         id[2] << 1,
@@ -196,12 +199,7 @@ extern "C" fn main() {
     println!("How much 🐏? {}", ram_size);
 
     loop {
-        for i in 1..=3 {
-            println!("Rust🦀 {}", i);
-        }
-        for _ in 0..20_000_000 {
-            unsafe { core::arch::asm!("nop") };
-        }
+        unsafe { asm!("wfi") };
     }
 }
 
