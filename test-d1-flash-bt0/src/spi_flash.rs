@@ -5,7 +5,7 @@ mod consts {
 
     pub(super) const CMD_GET_FEATURE: u8 = 0x0f;
     pub(super) const CMD_READ_ID: u8 = 0x9f;
-    pub(super) const CMD_READ_GAGE: u8 = 0x13;
+    pub(super) const CMD_READ_PAGE: u8 = 0x13;
     pub(super) const CMD_READ_CACHE: u8 = 0x03;
     pub(super) const FEAT_STATUS: u8 = 0xc0;
     pub(super) const LEN_PAGE_BITS: u32 = 11;
@@ -35,7 +35,8 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
 
-        self.wait();
+        // FIXME: not on NOR :D
+        // self.wait();
         self.0.transfer([CMD_READ_ID], 1, &mut buf);
 
         buf
@@ -47,7 +48,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
         // println!("copy {} bytes from {base:#x}", buf.len());
         while !buf.is_empty() {
             let mut cmd = u32::to_be_bytes(base >> LEN_PAGE_BITS);
-            cmd[0] = CMD_READ_GAGE;
+            cmd[0] = CMD_READ_PAGE;
             self.wait();
             self.0.transfer(cmd, 0, []);
 
@@ -81,6 +82,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     /// 等待忙状态结束。
     #[inline]
     fn wait(&self) {
+        // SPI NOR QPI: C0 P7..P0 is for setting read parameters
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
             core::hint::spin_loop();
         }
