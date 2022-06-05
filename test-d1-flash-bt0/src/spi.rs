@@ -1,5 +1,6 @@
 //! Serial Peripheral Interface (SPI)
 use core::marker::PhantomData;
+use core::ptr::write_volatile;
 
 use crate::ccu::{Clocks, Gating, Reset};
 use crate::gpio::{
@@ -14,6 +15,10 @@ use d1_pac::{
     },
     CCU, SPI0,
 };
+
+// FIXME: Found in xboot, missing in manual
+const SPI0_BASE: usize = 0x0402_5000;
+const SPI0_CCR: usize = SPI0_BASE + 0x0024;
 
 /// D1 SPI peripheral
 pub struct Spi<SPI: Instance, PINS> {
@@ -38,6 +43,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
+
         // 配置时钟源和分频
         // clock and divider
         #[rustfmt::skip]
@@ -109,6 +115,16 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         let lx = x.len() as u32;
         let ld = dummy as u32;
         let lr = r.len() as u32;
+
+        // TODO: set rate
+        // spi.spi_ccr.write(|w| w.cdr_n(). ...);
+        /*
+        // TODO: compute value
+        let val = 0;
+        unsafe {
+            write_volatile(SPI0_CCR as *mut u32, val);
+        }
+        */
 
         #[rustfmt::skip]
         { // 传输配置
