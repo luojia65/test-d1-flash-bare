@@ -180,6 +180,23 @@ extern "C" fn main() {
         id[1] << 1,
     );
 
+    let mut page = [0u8; 256];
+    flash.copy_into(0, &mut page);
+
+    let mut remaining = &page as &[u8];
+    let mut cnt = 0;
+    while let [a, b, c, d, tail @ ..] = remaining {
+        print!("{:08x}", u32::from_le_bytes([*a, *b, *c, *d]));
+        if cnt == 7 {
+            println!("");
+            cnt = 0;
+        } else {
+            print!(" ");
+            cnt += 1;
+        }
+        remaining = &tail;
+    }
+
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
 
