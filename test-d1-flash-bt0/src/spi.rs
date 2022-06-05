@@ -26,7 +26,7 @@ pub struct Spi<SPI: Instance, PINS> {
 struct Stub<SPI: Instance>(PhantomData<SPI>);
 
 impl<SPI: Instance, PINS> Spi<SPI, PINS> {
-    /// Create instance of Spi
+    /// Create instance of Spi in CPU mode (manual p939)
     #[inline]
     pub fn new(spi: SPI, pins: PINS, _clocks: &Clocks) -> Self
     where
@@ -39,6 +39,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
         // 配置时钟源和分频
+        // clock and divider
         #[rustfmt::skip]
         ccu.spi0_clk.write(|w| w
             .clk_src_sel().pll_peri_1x()
@@ -47,12 +48,14 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             .clk_gating() .set_bit()
         );
         // 断开接地，连接时钟
+        // de-assert reset
         #[rustfmt::skip]
         ccu.spi_bgr.write(|w| w
             .spi0_rst()   .deassert()
             .spi0_gating().set_bit()
         );
         // 3. 软重置，清空 FIFO
+        // soft reset
         #[rustfmt::skip]
         spi.spi_gcr.write(|w| w
             .srst() .variant(true)
@@ -64,6 +67,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         while spi.spi_gcr.read().srst().bit_is_set() {
             core::hint::spin_loop();
         }
+        // clear FIFO
         #[rustfmt::skip]
         spi.spi_fcr.write(|w| w
             .tf_rst().set_bit()
@@ -79,6 +83,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             }
         }
         // 4. 配置工作模式
+        // mode config; TODO: is this correct?
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
             .ss_owner().variant(SS_OWNER_A::SPI_CONTROLLER)
