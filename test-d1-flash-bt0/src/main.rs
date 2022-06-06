@@ -7,7 +7,7 @@
 
 use core::{arch::asm, panic::PanicInfo};
 use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
+use embedded_hal::digital::{blocking::OutputPin, PinState};
 
 #[macro_use]
 mod logging;
@@ -24,7 +24,7 @@ use ccu::Clocks;
 use gpio::Gpio;
 use jtag::Jtag;
 use spi::Spi;
-use spi_flash::SpiNand;
+use spi_flash::{SpiNand, SpiNor};
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
@@ -144,6 +144,7 @@ extern "C" fn main() {
     // light up led
     let mut pb5 = gpio.portb.pb5.into_output();
     pb5.set_high().unwrap();
+    // FIXME: This is broken. It worked before.
     let mut pc1 = gpio.portc.pc1.into_output();
     pc1.set_high().unwrap();
 
@@ -161,13 +162,16 @@ extern "C" fn main() {
 
     println!("oreboot 🦀");
 
+    let ram_size = mctl::init();
+    println!("How much 🐏? {}", ram_size);
+
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
     let scs = gpio.portc.pc3.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
-    let mut flash = SpiNand::new(spi);
+    let mut flash = SpiNor::new(spi);
 
     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
     // see flashrom/flashchips.h for details and more
@@ -180,28 +184,24 @@ extern "C" fn main() {
         id[1] << 1,
     );
 
-    let mut page = [0u8; 256];
-    flash.copy_into(0, &mut page);
+    for i in 0..8 {
+        let buf = flash.copy_into([0, 0, 3 + i * 4]);
 
-    let mut remaining = &page as &[u8];
-    let mut cnt = 0;
-    while let [a, b, c, d, tail @ ..] = remaining {
-        print!("{:08x}", u32::from_le_bytes([*a, *b, *c, *d]));
-        if cnt == 7 {
-            println!("");
-            cnt = 0;
-        } else {
-            print!(" ");
-            cnt += 1;
-        }
-        remaining = &tail;
+        println!(
+            "{:08x}",
+            u32::from_le_bytes([buf[3] << 1, buf[2] << 1, buf[1] << 1, buf[0] << 1])
+        );
     }
 
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
 
-    let ram_size = mctl::init();
-    println!("How much 🐏? {}", ram_size);
+    unsafe {
+        for _ in 0..100_000_000 {
+            core::arch::asm!("nop")
+        }
+    }
+    println!("Run payload...");
 }
 
 // should jump to dram but not reach there

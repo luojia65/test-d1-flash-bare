@@ -22,7 +22,7 @@ use consts::*;
 /// NOR Flash with SPI.
 pub struct SpiNor<SPI: Instance, PINS>(Spi<SPI, PINS>);
 
-impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
     #[inline]
     pub fn new(inner: Spi<SPI, PINS>) -> Self {
         Self(inner)
@@ -33,13 +33,12 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     }
 }
 
-impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
+impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
     /// Reads hardware ID.
     #[inline]
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
 
-        self.wait();
         self.0.transfer([CMD_READ_ID], 1, &mut buf);
 
         buf

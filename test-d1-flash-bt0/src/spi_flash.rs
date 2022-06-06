@@ -11,6 +11,22 @@ mod consts {
     pub(super) const LEN_PAGE_BITS: u32 = 11;
     pub(super) const LEN_PAGE: u32 = 1 << LEN_PAGE_BITS;
     pub(super) const LEN_PAGE_MASK: u32 = LEN_PAGE - 1;
+
+    pub(super) const CMD_NOR_WRSR: u8 = 0x01;
+    pub(super) const CMD_NOR_PROG: u8 = 0x02;
+    pub(super) const CMD_NOR_READ: u8 = 0x03;
+    pub(super) const CMD_NOR_READ_FAST: u8 = 0x0b;
+    pub(super) const CMD_NOR_READ_STATUS_REG1: u8 = 0x05;
+    pub(super) const CMD_NOR_READ_STATUS_REG2: u8 = 0x35;
+    pub(super) const CMD_NOR_READ_STATUS_REG3: u8 = 0x15;
+    pub(super) const CMD_NOR_WRITE_ENABLE: u8 = 0x06;
+    pub(super) const CMD_NOR_E4K: u8 = 0x20;
+    pub(super) const CMD_NOR_E32K: u8 = 0x52;
+    pub(super) const CMD_NOR_SFDP: u8 = 0x5a;
+    pub(super) const CMD_NOR_READ_ID: u8 = 0x9f;
+    pub(super) const CMD_NOR_ENTER_4B: u8 = 0xb7;
+    pub(super) const CMD_NOR_E64K: u8 = 0xd8;
+    pub(super) const CMD_NOR_EXIT_4B: u8 = 0xe9;
 }
 
 use consts::*;
@@ -84,6 +100,54 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     fn wait(&self) {
         // SPI NOR QPI: C0 P7..P0 is for setting read parameters
         while self.get_feature(FEAT_STATUS) & 1 == 1 {
+            core::hint::spin_loop();
+        }
+    }
+}
+
+/// NOR Flash with SPI.
+pub struct SpiNor<SPI: Instance, PINS>(Spi<SPI, PINS>);
+
+impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
+    #[inline]
+    pub fn new(inner: Spi<SPI, PINS>) -> Self {
+        Self(inner)
+    }
+    #[inline]
+    pub fn free(self) -> Spi<SPI, PINS> {
+        self.0
+    }
+}
+
+impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
+    /// Reads hardware ID.
+    #[inline]
+    pub fn read_id(&self) -> [u8; 3] {
+        let mut buf = [0u8; 3];
+
+        self.0.transfer([CMD_READ_ID], 1, &mut buf);
+
+        buf
+    }
+
+    /// Copies bytes from address `addr` to `buf`.
+    #[inline]
+    pub fn copy_into(&mut self, addr: [u8; 3]) -> [u8; 4] {
+        // println!("copy {} bytes from {addr:#x}", buf.len());
+        let cmd = [CMD_NOR_READ, addr[0], addr[1], addr[2]];
+        self.wait();
+        let mut buf = [0u8; 4];
+        self.0.transfer(cmd, 1, &mut buf);
+
+        buf
+    }
+}
+
+impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
+    #[inline]
+    fn wait(&self) {
+        // SPI NOR QPI: C0 P7..P0 is for setting read parameters
+        while false {
             core::hint::spin_loop();
         }
     }
