@@ -5,6 +5,7 @@
 #![no_std]
 #![no_main]
 
+use core::intrinsics::transmute;
 use core::ptr::{read_volatile, write_volatile};
 use core::{arch::asm, panic::PanicInfo};
 use d1_pac::Peripherals;
@@ -131,6 +132,8 @@ pub unsafe extern "C" fn start() -> ! {
     )
 }
 
+const SDRAM_BASE: usize = 0x40000000;
+
 extern "C" fn main() {
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     let p = Peripherals::take().unwrap();
@@ -196,24 +199,41 @@ extern "C" fn main() {
         id[0], id[1], id[2],
     );
 
-    for i in 0..28 {
-        let buf = flash.copy_into([0, 0, 0 + i * 4]);
+    // 32K, the size of boot0
+    let base = 0x1 << 15;
+    let size: usize = 15400;
+    for i in 0..size {
+        let off = base + i * 4;
+        let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-        println!(
-            "{:08x}",
-            u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]),
-        );
+        let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
+        unsafe {
+            write_volatile((SDRAM_BASE + i * 4) as *mut u32, val);
+        }
+
+        if i < 10 || i == 256 {
+            println!("{:08x} :: {:08x}", val, unsafe {
+                read_volatile((SDRAM_BASE + i * 4) as *mut u32)
+            });
+        }
     }
 
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
 
     unsafe {
-        for _ in 0..100_000_000 {
+        for _ in 0..10_000_000 {
             core::arch::asm!("nop")
         }
     }
     println!("Run payload...");
+    let addr = SDRAM_BASE;
+    unsafe {
+        let f: extern "C" fn() = transmute(addr);
+        println!("on to {:#x}", addr);
+        f();
+    }
+    println!("whoops...");
 }
 
 // should jump to dram but not reach there
