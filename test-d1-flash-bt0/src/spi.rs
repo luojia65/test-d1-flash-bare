@@ -89,15 +89,36 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             }
         }
         // 4. 配置工作模式
-        // mode config; TODO: is this correct?
+        // mode config: CPOL HIGH + CPHA P1 => mode 3; manual p932 table 9-9
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
             .ss_owner().variant(SS_OWNER_A::SPI_CONTROLLER)
             .ss_sel()  .variant(SS_SEL_A::SS0)
             .spol()    .variant(SPOL_A::LOW)
-            .cpol()    .variant(CPOL_A::LOW)
+            .cpol()    .variant(CPOL_A::HIGH)
             .cpha()    .variant(CPHA_A::P1)
         );
+        /*
+        // TODO: do delay calibration properly
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().set_bit();
+            unsafe { w.samp_dl_sw().bits(0b100000) }
+        });
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().clear_bit();
+            unsafe { w.samp_dl_sw().bits(0) }
+        });
+        spi.spi_samp_dl.write(|w| w.samp_dl_cal_start().set_bit());
+        // FIXME: never finishes?
+        // while spi.spi_samp_dl.read().samp_dl_cal_done().bit_is_clear() {}
+        // FIXME: Manual says "calculate", but now how; what do we need to do?
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().set_bit();
+            let v = spi.spi_samp_dl.read().samp_dl().bits();
+            println!("{:08x}", v);
+            unsafe { w.samp_dl_sw().bits(v) }
+        });
+        */
         Spi {
             inner: spi,
             pins,
@@ -137,6 +158,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         spi.spi_tcr.modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
         };
         // 发送
+        // send
         for b in x {
             while spi.spi_fsr.read().tf_cnt().bits() >= 64 {
                 core::hint::spin_loop();
@@ -152,6 +174,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             let _ = spi.spi_rxd_8().read();
         }
         // 接收
+        // read out
         for b in r {
             while spi.spi_fsr.read().rf_cnt().bits() == 0 {
                 core::hint::spin_loop();

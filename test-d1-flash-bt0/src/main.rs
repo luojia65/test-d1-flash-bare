@@ -191,20 +191,17 @@ extern "C" fn main() {
     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
     // see flashrom/flashchips.h for details and more
     let id = flash.read_id();
-    // FIXME: The << 1 shouldn't be necessary; how does SPI NOR work?
     println!(
         " | SPI flash\n  \\ vendor ID: {:x}\n   \\ flash ID: {:x}{:x}\n",
-        id[0] << 1,
-        id[1] << 1,
-        id[2] << 1,
+        id[0], id[1], id[2],
     );
 
-    for i in 0..12 {
+    for i in 0..28 {
         let buf = flash.copy_into([0, 0, 0 + i * 4]);
 
         println!(
             "{:08x}",
-            u32::from_le_bytes([buf[3] << 1, buf[2] << 1, buf[1] << 1, buf[0] << 1])
+            u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]),
         );
     }
 
