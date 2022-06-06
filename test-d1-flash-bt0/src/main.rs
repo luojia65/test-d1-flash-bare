@@ -194,13 +194,13 @@ extern "C" fn main() {
     // FIXME: The << 1 shouldn't be necessary; how does SPI NOR work?
     println!(
         " | SPI flash\n  \\ vendor ID: {:x}\n   \\ flash ID: {:x}{:x}\n",
-        id[2] << 1,
         id[0] << 1,
         id[1] << 1,
+        id[2] << 1,
     );
 
-    for i in 0..8 {
-        let buf = flash.copy_into([0, 0, 3 + i * 4]);
+    for i in 0..12 {
+        let buf = flash.copy_into([0, 0, 0 + i * 4]);
 
         println!(
             "{:08x}",

@@ -125,7 +125,7 @@ impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
 
-        self.0.transfer([CMD_READ_ID], 1, &mut buf);
+        self.0.transfer([CMD_READ_ID], 0, &mut buf);
 
         buf
     }
@@ -137,7 +137,7 @@ impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
         let cmd = [CMD_NOR_READ, addr[0], addr[1], addr[2]];
         self.wait();
         let mut buf = [0u8; 4];
-        self.0.transfer(cmd, 1, &mut buf);
+        self.0.transfer(cmd, 0, &mut buf);
 
         buf
     }

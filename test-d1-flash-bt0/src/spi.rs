@@ -127,7 +127,9 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         */
 
         #[rustfmt::skip]
-        { // 传输配置
+        {
+        // 传输配置
+        // transport configuration
         spi.spi_mbc.write(|w| w.mbc ().variant(lx + ld + lr));
         spi.spi_mtc.write(|w| w.mwtc().variant(lx));
         spi.spi_bcc.write(|w| w.stc ().variant(lx)
@@ -142,6 +144,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             spi.spi_txd_8().write(|w| unsafe { w.bits(*b) });
         }
         // 跳过不需要的输入
+        // skip dummy bytes
         for _ in 0..lx + ld {
             while spi.spi_fsr.read().rf_cnt().bits() == 0 {
                 core::hint::spin_loop();
@@ -156,6 +159,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             *b = spi.spi_rxd_8().read().bits();
         }
         // 确认传输已结束
+        // assert that the transfer has ended
         assert!(spi.spi_tcr.read().xch().bit_is_clear());
     }
 
