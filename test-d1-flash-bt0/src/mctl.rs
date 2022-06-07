@@ -3,7 +3,7 @@ use core::ptr::{read_volatile, write_volatile};
 // for verbose prints
 const VERBOSE: bool = true;
 
-const RAM_BASE: usize = 0x40000000;
+pub const RAM_BASE: usize = 0x40000000;
 
 // p49 ff
 const CCU: usize = 0x0200_1000;
@@ -36,9 +36,8 @@ const SYS_LDO_CTRL_REG: usize = SYS_CFG + 0x0150;
 const RES_CAL_CTRL_REG: usize = SYS_CFG + 0x0160;
 const RES240_CTRL_REG: usize = SYS_CFG + 0x0168;
 const RES_CAL_STATUS_REG: usize = SYS_CFG + 0x016c;
-
-const ZQ_VALUE: usize = SYS_CFG + 0x0172;
 const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
+const ZQ_VALUE: usize = SYS_CFG + 0x0172;
 
 const BAR_BASE: usize = 0x0700_0000; // TODO: What do we call this?
 const SOME_STATUS: usize = BAR_BASE + 0x05d4; // 0x70005d4
@@ -67,7 +66,9 @@ const DRAM_MASTER_CTL1: usize = MSI_MEMC_BASE + 0x0020;
 const DRAM_MASTER_CTL2: usize = MSI_MEMC_BASE + 0x0024;
 const DRAM_MASTER_CTL3: usize = MSI_MEMC_BASE + 0x0028;
 
-const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
+// NOTE: From unused function `bit_delay_compensation` in the
+// C code; could be for other platforms?
+// const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 
 // TODO:
 // 0x0310_2200
@@ -87,10 +88,14 @@ const UNKNOWN6: usize = MSI_MEMC_BASE + 0x0100; // 0x3102100
 // 0x0310_31c8
 // 0x0310_31d0
 
+/*
+// NOTE: From unused function `bit_delay_compensation` in the
+// C code; could be for other platforms?
 // DATX0IOCR x + 4 * size
 // DATX0IOCR - DATX3IOCR: 11 registers per block, blocks 0x20 words apart
 const DATX0IOCR: usize = MSI_MEMC_BASE + 0x0310; // 0x3102310
 const DATX3IOCR: usize = MSI_MEMC_BASE + 0x0510; // 0x3102510
+*/
 
 const PHY_AC_MAP1: usize = 0x3102500;
 const PHY_AC_MAP2: usize = 0x3102504;
@@ -638,28 +643,19 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
         trefi = (para.dram_tpr2 >> 0) & 0xfff; // [11:0 ]
     } else {
         let frq2 = dfreq >> 1; // s0
-                               // println!("frq2 {}", frq2);
         match dtype {
             3 => {
                 // DDR3
                 trfc = auto_cal_timing(350, frq2);
                 trefi = auto_cal_timing(7800, frq2) / 32 + 1; // XXX
                 twr = auto_cal_timing(8, frq2);
+                twtr = if twr < 2 { 2 } else { twr + 2 }; // + 2 ? XXX
                 trcd = auto_cal_timing(15, frq2);
-                twtr = twr + 2; // + 2 ? XXX
-                if twr < 2 {
-                    twtr = 2
-                };
-                twr = trcd;
-                if trcd < 2 {
-                    twr = 2
-                };
+                twr = if trcd < 2 { 2 } else { trcd };
                 if dfreq <= 800 {
                     tfaw = auto_cal_timing(50, frq2);
-                    trrd = auto_cal_timing(10, frq2);
-                    if trrd < 2 {
-                        trrd = 2
-                    };
+                    let trrdc = auto_cal_timing(10, frq2);
+                    trrd = if trrd < 2 { 2 } else { trrdc };
                     trc = auto_cal_timing(53, frq2);
                     tras = auto_cal_timing(38, frq2);
                     txp = trrd; // 10
@@ -765,18 +761,10 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
         //assign the value back to the DRAM structure
         tccd = 2;
         trtp = 4; // not in .S ?
-        para.dram_tpr0 = (trc << 0) as u32
-            | (trcd << 6) as u32
-            | (trrd << 11) as u32
-            | (tfaw << 15) as u32
-            | (tccd << 21) as u32;
-        para.dram_tpr1 = (tras << 0) as u32
-            | (trp << 6) as u32
-            | (twr << 11) as u32
-            | (trtp << 15) as u32
-            | (twtr << 20) as u32
-            | (txp << 23) as u32;
-        para.dram_tpr2 = (trefi << 0) as u32 | (trfc << 12) as u32;
+        para.dram_tpr0 = (trc << 0) | (trcd << 6) | (trrd << 11) | (tfaw << 15) | (tccd << 21);
+        para.dram_tpr1 =
+            (tras << 0) | (trp << 6) | (twr << 11) | (trtp << 15) | (twtr << 20) | (txp << 23);
+        para.dram_tpr2 = (trefi << 0) | (trfc << 12);
     }
 
     let tcksrx: u32; // t1
@@ -784,7 +772,7 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     let mut trd2wr: u32; // t6
     let trasmax: u32; // t3;
     let twtp: u32; // s6 (was twr!)
-    let mut tcke: u32; // s8
+    let tcke: u32; // s8
     let tmod: u32; // t0
     let tmrd: u32; // t5
     let tmrw: u32; // a1
@@ -796,18 +784,18 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     let mr2: u32; // t2
     let mr1: u32; // s1
     let mr0: u32; // a3
-    let dmr3: u32; // 72(sp)
 
+    //let dmr3: u32; // 72(sp)
     //let trtp:u32;	// 64(sp)
-    let dmr1: u32; // 56(sp)
+    //let dmr1: u32; // 56(sp)
     let twr2rd: u32; // 48(sp)
     let tdinit3: u32; // 40(sp)
     let tdinit2: u32; // 32(sp)
     let tdinit1: u32; // 24(sp)
     let tdinit0: u32; // 16(sp)
 
-    dmr1 = para.dram_mr1;
-    dmr3 = para.dram_mr3;
+    let dmr1 = para.dram_mr1;
+    let dmr3 = para.dram_mr3;
 
     match dtype {
         /*
@@ -873,19 +861,15 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
             tdinit2 = 200 * dfreq + 1; // 200 us
             tdinit3 = 1 * dfreq + 1; //   1 us
 
-            if ((tpr13 >> 2) & 0x03) == 0x01 || dfreq < 912 {
-                mr1 = dmr1;
-                t_rdata_en = tcwl; // a5 <- a4
-                tcksrx = 5;
-                tckesr = 4;
-                trd2wr = 5;
+            mr1 = dmr1;
+            t_rdata_en = tcwl; // a5 <- a4
+            tcksrx = 5;
+            tckesr = 4;
+            trd2wr = if ((tpr13 >> 2) & 0x03) == 0x01 || dfreq < 912 {
+                5
             } else {
-                mr1 = dmr1;
-                t_rdata_en = tcwl; // a5 <- a4
-                tcksrx = 5;
-                tckesr = 4;
-                trd2wr = 6;
-            }
+                6
+            };
             tcke = 3; // not in .S ?
             tmod = 12;
             tmrd = 4;
@@ -1049,8 +1033,8 @@ fn auto_set_timing_para(para: &mut dram_parameters) {
     writel(PTR4, (tdinit2 << 0) | (tdinit3 << 20));
 
     // Set refresh timing and mode
-    writel(RFSHTMG, (trefi << 16) as u32 | (trfc << 0) as u32);
-    writel(RFSHCTL1, 0x0fff0000 & (trefi << 15) as u32);
+    writel(RFSHTMG, (trefi << 16) | (trfc << 0));
+    writel(RFSHCTL1, 0x0fff0000 & (trefi << 15));
 }
 
 fn eye_delay_compensation(para: &mut dram_parameters) {
@@ -1144,9 +1128,9 @@ fn mctl_channel_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     let mut val;
 
     // set DDR clock to half of CPU clock
-    val = readl(0x310200c) & 0xfffff000;
+    val = readl(UNKNOWN7) & 0xfffff000;
     val |= (para.dram_clk >> 1) - 1;
-    writel(0x310200c, val);
+    writel(UNKNOWN7, val);
 
     // MRCTRL0 nibble 3 undocumented
     val = readl(MRCTRL0) & 0xfffff0ff;
