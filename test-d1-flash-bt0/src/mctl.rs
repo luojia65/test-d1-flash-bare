@@ -1734,7 +1734,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         println!("DRAM only has internal ZQ.");
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
         writel(RES240_CTRL_REG, 0);
-        for _ in 0..20_000_000 {}
+        sdelay(10);
     } else {
         writel(ANALOG_SYS_PWROFF_GATING_REG, 0); // 0x7010000 + 0x254; l 9655
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) & !0x003);
