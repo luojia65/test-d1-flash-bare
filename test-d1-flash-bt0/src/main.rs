@@ -206,16 +206,19 @@ extern "C" fn main() {
         let off = base + i * 4;
         let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
+        let addr = SDRAM_BASE + i * 4;
         let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
-        unsafe {
-            write_volatile((SDRAM_BASE + i * 4) as *mut u32, val);
-        }
+        unsafe { write_volatile(addr as *mut u32, val) };
+        let rval = unsafe { read_volatile(addr as *mut u32) };
 
-        if i < 10 || i == 256 {
-            println!("{:08x} :: {:08x}", val, unsafe {
-                read_volatile((SDRAM_BASE + i * 4) as *mut u32)
-            });
+        if rval != val {
+            println!("MISMATCH {addr} r{:08x} :: {:08x}", rval, val);
         }
+        /*
+        if i < 10 || i == 256 {
+            println!("{:08x} :: {:08x}", val, rval);
+        }
+        */
     }
 
     let spi = flash.free();
@@ -226,14 +229,12 @@ extern "C" fn main() {
             core::arch::asm!("nop")
         }
     }
-    println!("Run payload...");
     let addr = SDRAM_BASE;
+    println!("Run payload at {:#x}", addr);
     unsafe {
         let f: extern "C" fn() = transmute(addr);
-        println!("on to {:#x}", addr);
         f();
     }
-    println!("whoops...");
 }
 
 // should jump to dram but not reach there

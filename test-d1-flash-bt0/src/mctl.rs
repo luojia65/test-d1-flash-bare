@@ -1,5 +1,8 @@
 use core::ptr::{read_volatile, write_volatile};
 
+// for verbose prints
+const VERBOSE: bool = true;
+
 const RAM_BASE: usize = 0x40000000;
 
 // p49 ff
@@ -53,8 +56,8 @@ const SID_INFO: usize = SYS_CFG + 0x2228; // 0x3002228
 const MSI_MEMC_BASE: usize = 0x0310_2000; // p32 0x0310_2000 - 0x0330_1FFF
 
 // PHY config registers; TODO: fix names
-const MC_WORK_MODE_RANK0_LOW: usize = MSI_MEMC_BASE;
-const MC_WORK_MODE_RANK0_HIGH: usize = MSI_MEMC_BASE + 0x0004;
+const MC_WORK_MODE_RANK0_1: usize = MSI_MEMC_BASE;
+const MC_WORK_MODE_RANK0_2: usize = MSI_MEMC_BASE + 0x0004;
 
 const UNKNOWN1: usize = MSI_MEMC_BASE + 0x0008; // 0x3102008
 const UNKNOWN7: usize = MSI_MEMC_BASE + 0x000c; // 0x310200c
@@ -153,8 +156,8 @@ const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
 const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
 
 // TODO: *_BASE ?
-const MC_WORK_MODE_RANK1_LOW: usize = MSI_MEMC_BASE + 0x10_0000;
-const MC_WORK_MODE_RANK1_HIGH: usize = MSI_MEMC_BASE + 0x10_0004;
+const MC_WORK_MODE_RANK1_1: usize = MSI_MEMC_BASE + 0x10_0000;
+const MC_WORK_MODE_RANK1_2: usize = MSI_MEMC_BASE + 0x10_0004;
 
 #[repr(C)]
 pub struct dram_parameters {
@@ -206,7 +209,7 @@ pub struct dram_parameters {
 */
 
 // taken from SPL
-const DRAM_PARA: dram_parameters = dram_parameters {
+static mut DRAM_PARA: dram_parameters = dram_parameters {
     dram_clk: 0x00000318,
     dram_type: 0x00000003,
     dram_zq: 0x007b7bfb,
@@ -519,7 +522,7 @@ fn mctl_com_init(para: &mut dram_parameters) {
     writel(UNKNOWN1, val);
 
     // Set sdram type and word width
-    let mut val = readl(MC_WORK_MODE_RANK0_LOW) & 0xff000fff;
+    let mut val = readl(MC_WORK_MODE_RANK0_1) & 0xff000fff;
     val |= (para.dram_type & 0x7) << 16; // DRAM type
     val |= (!para.dram_para2 & 0x1) << 12; // DQ width
     if para.dram_type != 6 && para.dram_type != 7 {
@@ -528,7 +531,7 @@ fn mctl_com_init(para: &mut dram_parameters) {
     } else {
         val |= 0x480000; // type 6 and 7 must use 1T
     }
-    writel(MC_WORK_MODE_RANK0_LOW, val);
+    writel(MC_WORK_MODE_RANK0_1, val);
 
     // init rank / bank / row for single/dual or two different ranks
     let val = para.dram_para2;
@@ -540,7 +543,7 @@ fn mctl_com_init(para: &mut dram_parameters) {
     };
 
     for i in 0..rank {
-        let ptr = MC_WORK_MODE_RANK0_LOW + i * 4;
+        let ptr = MC_WORK_MODE_RANK0_1 + i * 4;
         let mut val = readl(ptr) & 0xfffff000;
 
         val |= (para.dram_para2 >> 12) & 0x3; // rank
@@ -559,7 +562,7 @@ fn mctl_com_init(para: &mut dram_parameters) {
     }
 
     // set ODTMAP based on number of ranks in use
-    let val = match readl(MC_WORK_MODE_RANK0_LOW) & 0x1 {
+    let val = match readl(MC_WORK_MODE_RANK0_1) & 0x1 {
         0 => 0x201,
         _ => 0x303,
     };
@@ -572,13 +575,13 @@ fn mctl_com_init(para: &mut dram_parameters) {
 
     // purpose ??
     if para.dram_tpr4 > 0 {
-        let mut val = readl(MC_WORK_MODE_RANK0_LOW);
+        let mut val = readl(MC_WORK_MODE_RANK0_1);
         val |= (para.dram_tpr4 << 25) & 0x06000000;
-        writel(MC_WORK_MODE_RANK0_LOW, val);
+        writel(MC_WORK_MODE_RANK0_1, val);
 
-        let mut val = readl(MC_WORK_MODE_RANK0_HIGH);
+        let mut val = readl(MC_WORK_MODE_RANK0_2);
         val |= ((para.dram_tpr4 >> 2) << 12) & 0x001ff000;
-        writel(MC_WORK_MODE_RANK0_HIGH, val);
+        writel(MC_WORK_MODE_RANK0_2, val);
     }
 }
 
@@ -1054,7 +1057,7 @@ fn eye_delay_compensation(para: &mut dram_parameters) {
     let mut val: u32;
 
     // DATn0IOCR
-    for i in 0..8 {
+    for i in 0..9 {
         let ptr = DAT00IOCR + i * 4;
         val = readl(ptr);
         val |= (para.dram_tpr11 << 9) & 0x1e00;
@@ -1063,7 +1066,7 @@ fn eye_delay_compensation(para: &mut dram_parameters) {
     }
 
     // DATn1IOCR
-    for i in 0..8 {
+    for i in 0..9 {
         let ptr = DAT01IOCR + i * 4;
         val = readl(ptr);
         val |= ((para.dram_tpr11 >> 4) << 9) & 0x1e00;
@@ -1112,14 +1115,14 @@ fn eye_delay_compensation(para: &mut dram_parameters) {
 
     // TODO: unknown regs
     // NOTE: dram_tpr10 is set to 0x0 for D1
-    for i in 0..14 {
+    for i in 0..15 {
         let ptr = 0x3103240 + i * 4;
         val = readl(ptr);
         val |= ((para.dram_tpr10 >> 4) << 8) & 0x0f00;
         writel(ptr, val);
     }
 
-    for i in 0..5 {
+    for i in 0..6 {
         let ptr = 0x3103228 + i * 4;
         val = readl(ptr);
         val |= ((para.dram_tpr10 >> 4) << 8) & 0x0f00;
@@ -1382,7 +1385,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         0 => 1,
         _ => 2,
     };
-    let mc_work_mode = MC_WORK_MODE_RANK0_LOW;
+    let mut mc_work_mode = MC_WORK_MODE_RANK0_1;
     let mut offs = 0;
 
     // println!("DRAM write test");
@@ -1433,9 +1436,12 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         out1: ;
         }
         if (i > 16) i = 16;
-        printf("[AUTO DEBUG] rank %d row = %d\n", rank, i);
-            */
+        */
         let i = 15; // FIXME above
+
+        /*
+        println!("DRAM rank {} row = {}", rank, i);
+        */
 
         // Store rows in para 1
         let shft = 4 + offs;
@@ -1446,10 +1452,10 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
 
         if rank == 1 {
             // Set bank mode for rank0
-            rval = readl(MC_WORK_MODE_RANK0_LOW);
+            rval = readl(MC_WORK_MODE_RANK0_1);
             rval &= 0xfffff003;
             rval |= 0x000006a4;
-            writel(MC_WORK_MODE_RANK0_LOW, rval);
+            writel(MC_WORK_MODE_RANK0_1, rval);
         }
 
         // Set bank mode for current rank
@@ -1474,38 +1480,42 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
             }
         }
         let banks = (j + 1) << 2; // 4 or 8
-        println!("[AUTO DEBUG] rank {} bank = {}", rank, banks);
+        if VERBOSE {
+            println!("DRAM rank {} bank = {}", rank, banks);
+        }
 
-        /*
         // Store banks in para 1
-        shft = 12 + offs;
-        rval  = para->dram_para1;
-        rval &= ~(0xf << shft);
+        let shft = 12 + offs;
+        rval = para.dram_para1;
+        rval &= !(0xf << shft);
         rval |= j << shft;
-        para->dram_para1 = rval;
+        para.dram_para1 = rval;
 
-        if (rank == 1) {
+        if rank == 1 {
             // Set page mode for rank0
-            rval  = readl(MC_WORK_MODE_RANK0_LOW);
+            rval = readl(MC_WORK_MODE_RANK0_1);
             rval &= 0xfffff003;
             rval |= 0x00000aa0;
-            writel(MC_WORK_MODE_RANK0_LOW, rval);
+            writel(MC_WORK_MODE_RANK0_1, rval);
         }
 
         // Set page mode for current rank
-        rval  = readl(mc_work_mode);
+        rval = readl(mc_work_mode);
         rval &= 0xfffff003;
         rval |= 0x00000aa0;
         writel(mc_work_mode, rval);
-        while (readl(mc_work_mode) != rval);
+        while readl(mc_work_mode) != rval {}
 
+        /*
         // Scan per address line, until address wraps (i.e. see shadow)
-        for(i = 9; i < 14; i++) {
+        for i in 9..14 {
             chk = RAM_BASE + (1 << i);
             ptr = RAM_BASE;
-            for (j = 0; j < 64; j++) {
-                if (readl(chk) != ((j & 1) ? ptr : ~ptr))
+            for j in 0..64 {
+                let exp = if j & 1 != 0 { ptr } else { !ptr };
+                if readl(chk) != exp {
                     goto out2;
+                }
                 ptr += 4;
                 chk += 4;
             }
@@ -1513,34 +1523,50 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         out2:;
         }
         if (i > 13) i = 13;
-        int pgsize = (i==9) ? 0 : (1 << (i-10));
-        printf("[AUTO DEBUG] rank %d page size = %d KB\n", rank, pgsize);
+        */
+        let i = 11; // FIXME above
+        let pgsize = if i == 9 { 0 } else { 1 << (i - 10) };
+
+        if VERBOSE {
+            println!("DRAM rank {} page size = {} KB", rank, pgsize);
+        }
 
         // Store page size
-        shft = offs;
-        rval  = para->dram_para1;
-        rval &= ~(0xf << shft);
+        let shft = offs;
+        rval = para.dram_para1;
+        rval &= !(0xf << shft);
         rval |= pgsize << shft;
-        para->dram_para1 = rval;
+        para.dram_para1 = rval;
+
+        // FIXME: should not be here; those loops are pretty messed up
+        {
+            rval = readl(MC_WORK_MODE_RANK1_1); // MC_WORK_MODE
+            rval &= 0xfffff003;
+            rval |= 0x000006f0;
+            writel(MC_WORK_MODE_RANK1_1, rval);
+
+            rval = readl(MC_WORK_MODE_RANK1_2); // MC_WORK_MODE2
+            rval &= 0xfffff003;
+            rval |= 0x000006f0;
+            writel(MC_WORK_MODE_RANK1_2, rval);
+        }
 
         // Move to next rank
-        rank++;
-        if (rank != maxrank) {
-            if (rank == 1) {
-                rval  = readl(MC_WORK_MODE_RANK1_LOW); // MC_WORK_MODE
+        if rank != maxrank {
+            if rank == 1 {
+                rval = readl(MC_WORK_MODE_RANK1_1); // MC_WORK_MODE
                 rval &= 0xfffff003;
                 rval |= 0x000006f0;
-                writel(MC_WORK_MODE_RANK1_LOW, rval);
+                writel(MC_WORK_MODE_RANK1_1, rval);
 
-                rval  = readl(MC_WORK_MODE_RANK1_HIGH); // MC_WORK_MODE2
+                rval = readl(MC_WORK_MODE_RANK1_2); // MC_WORK_MODE2
                 rval &= 0xfffff003;
                 rval |= 0x000006f0;
-                writel(MC_WORK_MODE_RANK1_HIGH, rval);
+                writel(MC_WORK_MODE_RANK1_2, rval);
             }
             offs += 16; // store rank1 config in upper half of para1
-            mc_work_mode +=  4; // move to MC_WORK_MODE2
+            mc_work_mode += 4; // move to MC_WORK_MODE2
         }
-        */
     }
     /*
     if (maxrank == 2) {
@@ -1564,7 +1590,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
 // channel_init. If error bit 22 is reset, we have two ranks and full DQ.
 // If there was an error, figure out whether it was half DQ, single rank,
 // or both. Set bit 12 and 0 in dram_para2 with the results.
-fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
+fn dqs_gate_detect(para: &mut dram_parameters) -> Result<&'static str, &'static str> {
     if readl(PGSR0) & (1 << 22) != 0 {
         let dx0 = (readl(UNKNOWN4) >> 24) & 0x3;
         let dx1 = (readl(UNKNOWN5) >> 24) & 0x3;
@@ -1575,20 +1601,17 @@ fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
             if dx0 != dx1 {
                 rval |= 0x1;
                 para.dram_para2 = rval;
-                // println!("[AUTO DEBUG] single rank and half DQ!");
-                return Ok(());
+                return Ok("[AUTO DEBUG] single rank and half DQ!");
             }
             para.dram_para2 = rval;
             // NOTE: D1 should do this here
-            // println!("[AUTO DEBUG] single rank and full DQ!");
-            return Ok(());
+            return Ok("single rank, full DQ");
         } else if dx0 == 0 {
             let mut rval = para.dram_para2;
             rval &= 0xfffffff0; // l 7920
             rval |= 0x00001001; // l 7918
             para.dram_para2 = rval;
-            // println!("[AUTO DEBUG] dual rank and half DQ!");
-            return Ok(());
+            return Ok("dual rank, half DQ!");
         } else {
             if para.dram_tpr13 & (1 << 29) != 0 {
                 // l 7935
@@ -1602,9 +1625,8 @@ fn dqs_gate_detect(para: &mut dram_parameters) -> Result<(), &'static str> {
         rval &= 0xfffffff0;
         rval |= 0x00001000;
         para.dram_para2 = rval;
-        // println!("[AUTO DEBUG] two rank and full DQ!\n");
+        return Ok("dual rank, full DQ");
     }
-    Ok(())
 }
 
 fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
@@ -1620,6 +1642,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     if readl(PGSR0) & (1 << 20) != 0 {
         return Err("auto scan dram rank & width failed !");
     }
+    // TODO: print success message
     dqs_gate_detect(para)?;
 
     para.dram_tpr13 = s1;
@@ -1684,7 +1707,7 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
 // total memory size in MB.
 fn dramc_get_dram_size() -> u32 {
     // MC_WORK_MODE0 (not MC_WORK_MODE, low word)
-    let low = readl(MC_WORK_MODE_RANK0_LOW);
+    let low = readl(MC_WORK_MODE_RANK0_1);
 
     let mut temp = (low >> 8) & 0xf; // page size - 3
     temp += (low >> 4) & 0xf; // row width - 1
@@ -1699,7 +1722,7 @@ fn dramc_get_dram_size() -> u32 {
     }
 
     // MC_WORK_MODE1 (not MC_WORK_MODE, high word)
-    let high = readl(MC_WORK_MODE_RANK0_HIGH);
+    let high = readl(MC_WORK_MODE_RANK0_2);
 
     temp = high & 0x3;
     if temp == 0 {
@@ -1724,7 +1747,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
-        println!("DRAM only have internal ZQ!!");
+        println!("DRAM only has internal ZQ.");
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
         writel(RES240_CTRL_REG, 0);
         for _ in 0..20_000_000 {}
@@ -1742,7 +1765,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Set voltage
     let rc = get_pmu_exists();
-    println!("get_pmu_exist() = {}\n", rc);
+    println!("PMU exists? {}", rc);
 
     if !rc {
         dram_vol_set(para);
@@ -1798,16 +1821,17 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         para.dram_para2 = (para.dram_para2 & 0xffff) | rc << 16;
     }
     let mem_size = rc;
-    println!("DRAM SIZE ={} M", mem_size);
+    println!("DRAM: {}M", mem_size);
 
     // TODO: define constants
     // Purpose ??
+    // What is Auto SR?
     if para.dram_tpr13 & (1 << 30) != 0 {
         let rc = readl(para.dram_tpr8 as usize);
         writel(UNKNOWN11, if rc == 0 { 0x10000200 } else { rc });
         writel(UNKNOWN10, 0x40a);
         writel(UNKNOWN15, readl(UNKNOWN15) | 1);
-        println!("Enable Auto SR");
+        // println!("Enable Auto SR");
     } else {
         writel(UNKNOWN11, readl(UNKNOWN11) & 0xffff0000);
         writel(UNKNOWN15, readl(UNKNOWN15) & (!0x1));
