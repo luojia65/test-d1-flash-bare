@@ -1355,6 +1355,118 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
     mctl_channel_init(para)
 }
 
+// The below routine reads the dram config registers and extracts
+// the number of address bits in each rank available. It then calculates
+// total memory size in MB.
+fn dramc_get_dram_size() -> u32 {
+    // MC_WORK_MODE0 (not MC_WORK_MODE, low word)
+    let low = readl(MC_WORK_MODE_RANK0_1);
+
+    let mut temp = (low >> 8) & 0xf; // page size - 3
+    temp += (low >> 4) & 0xf; // row width - 1
+    temp += (low >> 2) & 0x3; // bank count - 2
+    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
+    let size0 = 1 << temp;
+    // println!("low {} size0 {}", low, size0);
+
+    temp = low & 0x3; // rank count = 0? -> done
+    if temp == 0 {
+        return size0;
+    }
+
+    // MC_WORK_MODE1 (not MC_WORK_MODE, high word)
+    let high = readl(MC_WORK_MODE_RANK0_2);
+
+    temp = high & 0x3;
+    if temp == 0 {
+        // two identical ranks
+        return 2 * size0;
+    }
+
+    temp = (high >> 8) & 0xf; // page size - 3
+    temp += (high >> 4) & 0xf; // row width - 1
+    temp += (high >> 2) & 0x3; // bank number - 2
+    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
+    let size1 = 1 << temp;
+    // println!("high {} size1 {}", high, size1);
+
+    return size0 + size1; // add size of each rank
+}
+
+// The below routine reads the command status register to extract
+// DQ width and rank count. This follows the DQS training command in
+// channel_init. If error bit 22 is reset, we have two ranks and full DQ.
+// If there was an error, figure out whether it was half DQ, single rank,
+// or both. Set bit 12 and 0 in dram_para2 with the results.
+fn dqs_gate_detect(para: &mut dram_parameters) -> Result<&'static str, &'static str> {
+    if readl(PGSR0) & (1 << 22) != 0 {
+        let dx0 = (readl(UNKNOWN4) >> 24) & 0x3;
+        let dx1 = (readl(UNKNOWN5) >> 24) & 0x3;
+
+        if dx0 == 2 {
+            let mut rval = para.dram_para2;
+            rval &= 0xffff0ff0;
+            if dx0 != dx1 {
+                rval |= 0x1;
+                para.dram_para2 = rval;
+                return Ok("[AUTO DEBUG] single rank and half DQ!");
+            }
+            para.dram_para2 = rval;
+            // NOTE: D1 should do this here
+            return Ok("single rank, full DQ");
+        } else if dx0 == 0 {
+            let mut rval = para.dram_para2;
+            rval &= 0xfffffff0; // l 7920
+            rval |= 0x00001001; // l 7918
+            para.dram_para2 = rval;
+            return Ok("dual rank, half DQ!");
+        } else {
+            if para.dram_tpr13 & (1 << 29) != 0 {
+                // l 7935
+                // println!("DX0 {}", dx0);
+                // println!("DX1 {}", dx1);
+            }
+            return Err("dqs gate detect");
+        }
+    } else {
+        let mut rval = para.dram_para2;
+        rval &= 0xfffffff0;
+        rval |= 0x00001000;
+        para.dram_para2 = rval;
+        return Ok("dual rank, full DQ");
+    }
+}
+
+fn dramc_simple_wr_test(mem_mb: u32, len: u32) -> Result<(), &'static str> {
+    let offs: usize = (mem_mb as usize >> 1) << 18; // half of memory size
+    let patt1: u32 = 0x01234567;
+    let patt2: u32 = 0xfedcba98;
+
+    for i in 0..len {
+        let addr = RAM_BASE + 4 * i as usize;
+        writel(addr, patt1 + i);
+        writel(addr + offs, patt2 + i);
+    }
+
+    for i in 0..len {
+        let addr = RAM_BASE + 4 * i as usize;
+        let val = readl(addr);
+        let exp = patt1 + i;
+        if val != exp {
+            // println!("{:x} != {:x} at address {:x}", val, exp, addr);
+            return Err("DRAM simple test FAIL.");
+        }
+        let val = readl(addr + offs);
+        let exp = patt2 + i;
+        if val != exp {
+            // println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
+            return Err("DRAM simple test FAIL.");
+        }
+    }
+    println!("DRAM simple test OK.");
+    Ok(())
+}
+
 // Autoscan sizes a dram device by cycling through address lines and figuring
 // out if it is connected to a real address line, or if the address is a mirror.
 // First the column and bank bit allocations are set to low values (2 and 9 address
@@ -1365,35 +1477,16 @@ fn mctl_core_init(para: &mut dram_parameters) -> Result<(), &'static str> {
 fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     mctl_core_init(para)?;
 
-    let maxrank = match para.dram_para2 & 0xf000 {
-        0 => 1,
-        _ => 2,
-    };
+    // write test pattern
+    for i in 0..64 {
+        let ptr = RAM_BASE + 4 * i;
+        let val = if i & 1 > 0 { ptr } else { !ptr };
+        writel(ptr, val as u32);
+    }
+
+    let maxrank = if para.dram_para2 & 0xf000 == 0 { 1 } else { 2 };
     let mut mc_work_mode = MC_WORK_MODE_RANK0_1;
     let mut offs = 0;
-
-    // println!("DRAM write test");
-    // write test pattern
-    unsafe {
-        for i in 0..64 {
-            let ptr: u32 = RAM_BASE as u32 + 4 * i;
-            let val = if i & 1 > 0 { ptr } else { !ptr };
-            // println!("{:#x}", val);
-            write_volatile((RAM_BASE as u32 + ptr) as *mut u32, val);
-        }
-    }
-
-    // NOTE: looked good at this point
-    /*
-    println!("DRAM read test");
-    unsafe {
-        for i in 0..64 {
-            let ptr: u32 = RAM_BASE as u32 + 4 * i;
-            let val = read_volatile((RAM_BASE as u32 + ptr) as *mut u32);
-            println!("{:#x}", val);
-        }
-    }
-    */
 
     // TODO: do the rest
     for rank in 0..maxrank {
@@ -1569,50 +1662,10 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     Ok(())
 }
 
-// The below routine reads the command status register to extract
-// DQ width and rank count. This follows the DQS training command in
-// channel_init. If error bit 22 is reset, we have two ranks and full DQ.
-// If there was an error, figure out whether it was half DQ, single rank,
-// or both. Set bit 12 and 0 in dram_para2 with the results.
-fn dqs_gate_detect(para: &mut dram_parameters) -> Result<&'static str, &'static str> {
-    if readl(PGSR0) & (1 << 22) != 0 {
-        let dx0 = (readl(UNKNOWN4) >> 24) & 0x3;
-        let dx1 = (readl(UNKNOWN5) >> 24) & 0x3;
-
-        if dx0 == 2 {
-            let mut rval = para.dram_para2;
-            rval &= 0xffff0ff0;
-            if dx0 != dx1 {
-                rval |= 0x1;
-                para.dram_para2 = rval;
-                return Ok("[AUTO DEBUG] single rank and half DQ!");
-            }
-            para.dram_para2 = rval;
-            // NOTE: D1 should do this here
-            return Ok("single rank, full DQ");
-        } else if dx0 == 0 {
-            let mut rval = para.dram_para2;
-            rval &= 0xfffffff0; // l 7920
-            rval |= 0x00001001; // l 7918
-            para.dram_para2 = rval;
-            return Ok("dual rank, half DQ!");
-        } else {
-            if para.dram_tpr13 & (1 << 29) != 0 {
-                // l 7935
-                // println!("DX0 {}", dx0);
-                // println!("DX1 {}", dx1);
-            }
-            return Err("dqs gate detect");
-        }
-    } else {
-        let mut rval = para.dram_para2;
-        rval &= 0xfffffff0;
-        rval |= 0x00001000;
-        para.dram_para2 = rval;
-        return Ok("dual rank, full DQ");
-    }
-}
-
+// This routine sets up parameters with dqs_gating_mode equal to 1 and two
+// ranks enabled. It then configures the core and tests for 1 or 2 ranks and
+// full or half DQ width. it then resets the parameters to the original values.
+// dram_para2 is updated with the rank & width findings.
 fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static str> {
     let s1 = para.dram_tpr13;
     let s2 = para.dram_para1;
@@ -1634,38 +1687,6 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     Ok(())
 }
 
-const SDRAM_BASE: usize = 0x40000000;
-
-fn dramc_simple_wr_test(mem_mb: u32, len: u32) -> Result<(), &'static str> {
-    let offs: usize = (mem_mb as usize >> 1) << 18; // half of memory size
-    let patt1: u32 = 0x01234567;
-    let patt2: u32 = 0xfedcba98;
-
-    for i in 0..len {
-        let addr = SDRAM_BASE + 4 * i as usize;
-        writel(addr, patt1 + i);
-        writel(addr + offs, patt2 + i);
-    }
-
-    for i in 0..len {
-        let addr = SDRAM_BASE + 4 * i as usize;
-        let val = readl(addr);
-        let exp = patt1 + i;
-        if val != exp {
-            // println!("{:x} != {:x} at address {:x}", val, exp, addr);
-            return Err("DRAM simple test FAIL.");
-        }
-        let val = readl(addr + offs);
-        let exp = patt2 + i;
-        if val != exp {
-            // println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
-            return Err("DRAM simple test FAIL.");
-        }
-    }
-    println!("DRAM simple test OK.");
-    Ok(())
-}
-
 /* STEP 2 */
 /// This routine determines the SDRAM topology.
 ///
@@ -1684,44 +1705,6 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
         para.dram_tpr13 |= 0x6003;
     }
     Ok(())
-}
-
-// The below routine reads the dram config registers and extracts
-// the number of address bits in each rank available. It then calculates
-// total memory size in MB.
-fn dramc_get_dram_size() -> u32 {
-    // MC_WORK_MODE0 (not MC_WORK_MODE, low word)
-    let low = readl(MC_WORK_MODE_RANK0_1);
-
-    let mut temp = (low >> 8) & 0xf; // page size - 3
-    temp += (low >> 4) & 0xf; // row width - 1
-    temp += (low >> 2) & 0x3; // bank count - 2
-    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
-    let size0 = 1 << temp;
-    // println!("low {} size0 {}", low, size0);
-
-    temp = low & 0x3; // rank count = 0? -> done
-    if temp == 0 {
-        return size0;
-    }
-
-    // MC_WORK_MODE1 (not MC_WORK_MODE, high word)
-    let high = readl(MC_WORK_MODE_RANK0_2);
-
-    temp = high & 0x3;
-    if temp == 0 {
-        // two identical ranks
-        return 2 * size0;
-    }
-
-    temp = (high >> 8) & 0xf; // page size - 3
-    temp += (high >> 4) & 0xf; // row width - 1
-    temp += (high >> 2) & 0x3; // bank number - 2
-    temp -= 14; // 1MB = 20 bits, minus above 6 = 14
-    let size1 = 1 << temp;
-    // println!("high {} size1 {}", high, size1);
-
-    return size0 + size1; // add size of each rank
 }
 
 /// # Safety
