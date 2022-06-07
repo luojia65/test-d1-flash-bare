@@ -1855,11 +1855,12 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     let len = 4096; // NOTE: a commented call outside the if uses 64 in C code
     if para.dram_tpr13 & (1 << 28) != 0 {
         rc = readl(SOME_STATUS);
-        if rc & (1 << 16) == 0 {
-            if let Err(msg) = dramc_simple_wr_test(mem_size, len) {
-                println!("[WRITE TEST] {}", msg);
-                return 0;
-            }
+        if rc & (1 << 16) != 0 {
+            return 0;
+        }
+        if let Err(msg) = dramc_simple_wr_test(mem_size, len) {
+            println!("[WRITE TEST] {}", msg);
+            return 0;
         }
     }
 
