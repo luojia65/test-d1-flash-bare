@@ -1538,7 +1538,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         let i = scan_for_addr_wrap();
 
         if VERBOSE {
-            println!("DRAM rank {} row = {}", rank, i);
+            println!("rank {} row = {}", rank, i);
         }
 
         // Store rows in para 1
@@ -1579,7 +1579,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         }
         let banks = (j + 1) << 2; // 4 or 8
         if VERBOSE {
-            println!("DRAM rank {} bank = {}", rank, banks);
+            println!("rank {} bank = {}", rank, banks);
         }
 
         // Store banks in para 1
@@ -1608,7 +1608,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         let pgsize = if i == 9 { 0 } else { 1 << (i - 10) };
 
         if VERBOSE {
-            println!("DRAM rank {} page size = {} KB", rank, pgsize);
+            println!("rank {} page size = {}KB", rank, pgsize);
         }
 
         // Store page size
