@@ -1,5 +1,6 @@
 //! Serial Peripheral Interface (SPI)
 use core::marker::PhantomData;
+use core::ptr::write_volatile;
 
 use crate::ccu::{Clocks, Gating, Reset};
 use crate::gpio::{
@@ -15,6 +16,10 @@ use d1_pac::{
     CCU, SPI0,
 };
 
+// FIXME: Found in xboot, missing in manual
+const SPI0_BASE: usize = 0x0402_5000;
+const SPI0_CCR: usize = SPI0_BASE + 0x0024;
+
 /// D1 SPI peripheral
 pub struct Spi<SPI: Instance, PINS> {
     inner: SPI,
@@ -26,7 +31,7 @@ pub struct Spi<SPI: Instance, PINS> {
 struct Stub<SPI: Instance>(PhantomData<SPI>);
 
 impl<SPI: Instance, PINS> Spi<SPI, PINS> {
-    /// Create instance of Spi
+    /// Create instance of Spi in CPU mode (manual p939)
     #[inline]
     pub fn new(spi: SPI, pins: PINS, _clocks: &Clocks) -> Self
     where
@@ -38,7 +43,9 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
+
         // 配置时钟源和分频
+        // clock and divider
         #[rustfmt::skip]
         ccu.spi0_clk.write(|w| w
             .clk_src_sel().pll_peri_1x()
@@ -47,12 +54,14 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             .clk_gating() .set_bit()
         );
         // 断开接地，连接时钟
+        // de-assert reset
         #[rustfmt::skip]
         ccu.spi_bgr.write(|w| w
             .spi0_rst()   .deassert()
             .spi0_gating().set_bit()
         );
         // 3. 软重置，清空 FIFO
+        // soft reset
         #[rustfmt::skip]
         spi.spi_gcr.write(|w| w
             .srst() .variant(true)
@@ -64,6 +73,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         while spi.spi_gcr.read().srst().bit_is_set() {
             core::hint::spin_loop();
         }
+        // clear FIFO
         #[rustfmt::skip]
         spi.spi_fcr.write(|w| w
             .tf_rst().set_bit()
@@ -79,14 +89,36 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             }
         }
         // 4. 配置工作模式
+        // mode config: CPOL HIGH + CPHA P1 => mode 3; manual p932 table 9-9
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
             .ss_owner().variant(SS_OWNER_A::SPI_CONTROLLER)
             .ss_sel()  .variant(SS_SEL_A::SS0)
             .spol()    .variant(SPOL_A::LOW)
-            .cpol()    .variant(CPOL_A::LOW)
+            .cpol()    .variant(CPOL_A::HIGH)
             .cpha()    .variant(CPHA_A::P1)
         );
+        /*
+        // TODO: do delay calibration properly
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().set_bit();
+            unsafe { w.samp_dl_sw().bits(0b100000) }
+        });
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().clear_bit();
+            unsafe { w.samp_dl_sw().bits(0) }
+        });
+        spi.spi_samp_dl.write(|w| w.samp_dl_cal_start().set_bit());
+        // FIXME: never finishes?
+        // while spi.spi_samp_dl.read().samp_dl_cal_done().bit_is_clear() {}
+        // FIXME: Manual says "calculate", but now how; what do we need to do?
+        spi.spi_samp_dl.write(|w| {
+            w.samp_dl_sw_en().set_bit();
+            let v = spi.spi_samp_dl.read().samp_dl().bits();
+            println!("{:08x}", v);
+            unsafe { w.samp_dl_sw().bits(v) }
+        });
+        */
         Spi {
             inner: spi,
             pins,
@@ -105,8 +137,20 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         let ld = dummy as u32;
         let lr = r.len() as u32;
 
+        // TODO: set rate
+        // spi.spi_ccr.write(|w| w.cdr_n(). ...);
+        /*
+        // TODO: compute value
+        let val = 0;
+        unsafe {
+            write_volatile(SPI0_CCR as *mut u32, val);
+        }
+        */
+
         #[rustfmt::skip]
-        { // 传输配置
+        {
+        // 传输配置
+        // transport configuration
         spi.spi_mbc.write(|w| w.mbc ().variant(lx + ld + lr));
         spi.spi_mtc.write(|w| w.mwtc().variant(lx));
         spi.spi_bcc.write(|w| w.stc ().variant(lx)
@@ -114,6 +158,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         spi.spi_tcr.modify(|r, w| unsafe { w.bits(r.bits()) }.xch().set_bit());
         };
         // 发送
+        // send
         for b in x {
             while spi.spi_fsr.read().tf_cnt().bits() >= 64 {
                 core::hint::spin_loop();
@@ -121,6 +166,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             spi.spi_txd_8().write(|w| unsafe { w.bits(*b) });
         }
         // 跳过不需要的输入
+        // skip dummy bytes
         for _ in 0..lx + ld {
             while spi.spi_fsr.read().rf_cnt().bits() == 0 {
                 core::hint::spin_loop();
@@ -128,6 +174,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             let _ = spi.spi_rxd_8().read();
         }
         // 接收
+        // read out
         for b in r {
             while spi.spi_fsr.read().rf_cnt().bits() == 0 {
                 core::hint::spin_loop();
@@ -135,6 +182,7 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             *b = spi.spi_rxd_8().read().bits();
         }
         // 确认传输已结束
+        // assert that the transfer has ended
         assert!(spi.spi_tcr.read().xch().bit_is_clear());
     }
 

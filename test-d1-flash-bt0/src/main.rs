@@ -5,15 +5,18 @@
 #![no_std]
 #![no_main]
 
+use core::intrinsics::transmute;
+use core::ptr::{read_volatile, write_volatile};
 use core::{arch::asm, panic::PanicInfo};
 use d1_pac::Peripherals;
-use embedded_hal::digital::blocking::OutputPin;
+use embedded_hal::digital::{blocking::OutputPin, PinState};
 
 #[macro_use]
 mod logging;
 mod ccu;
 mod gpio;
 mod jtag;
+mod mctl;
 mod spi;
 mod spi_flash;
 mod time;
@@ -22,12 +25,20 @@ mod uart;
 use ccu::Clocks;
 use gpio::Gpio;
 use jtag::Jtag;
+use mctl::RAM_BASE;
 use spi::Spi;
-use spi_flash::SpiNand;
+use spi_flash::{SpiNand, SpiNor};
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
-const STACK_SIZE: usize = 8 * 1024; // 8KiB in 32KiB SRAM
+// taken from oreboot
+pub type EntryPoint = unsafe extern "C" fn(r0: usize, r1: usize);
+
+const STACK_SIZE: usize = 1 * 1024; // 1KiB
+
+const GPIO_BASE_ADDR: u32 = 0x0200_0000;
+const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
+const GPIO_PC_DATA: u32 = GPIO_BASE_ADDR + 0x0070;
 
 #[link_section = ".bss.uninit"]
 static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
@@ -143,8 +154,19 @@ extern "C" fn main() {
     // light up led
     let mut pb5 = gpio.portb.pb5.into_output();
     pb5.set_high().unwrap();
+    // FIXME: This is broken. It worked before. Breakage happened in commit:
+    // fd7f6b8bc2eebb25f888ded040566e591f037e9a
     let mut pc1 = gpio.portc.pc1.into_output();
     pc1.set_high().unwrap();
+
+    // Change into output mode
+    let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
+    let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
+    unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
+    // Set pin to HIGH
+    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
+    val = pc_dat0 | 0b1 << 1;
+    unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
 
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
@@ -158,38 +180,73 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
+    println!("oreboot 🦀");
+
+    let ram_size = mctl::init();
+    println!("{}M 🐏", ram_size);
+
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
     let scs = gpio.portc.pc3.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
-    let mut flash = SpiNand::new(spi);
+  
+    let mut flash = SpiNor::new(spi);
 
-    println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
+    // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
+    // see flashrom/flashchips.h for details and more
+    let id = flash.read_id();
+    println!("SPI flash vendor {:x} part {:x}{:x}\n", id[0], id[1], id[2],);
 
-    let mut page = [0u8; 256];
-    flash.copy_into(0, &mut page);
+    // 32K, the size of boot0
+    let base = 0x1 << 15;
+    let size: usize = 15400;
+    for i in 0..size {
+        let off = base + i * 4;
+        let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-    let mut remaining = &page as &[u8];
-    let mut cnt = 0;
-    while let [a, b, c, d, tail @ ..] = remaining {
-        print!("{}", u32::from_le_bytes([*a, *b, *c, *d])).ok();
-        if cnt == 7 {
-            println!().ok();
-            cnt = 0;
-        } else {
-            print!(" ").ok();
-            cnt += 1;
+        let addr = RAM_BASE + i * 4;
+        let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
+        unsafe { write_volatile(addr as *mut u32, val) };
+        let rval = unsafe { read_volatile(addr as *mut u32) };
+
+        if rval != val {
+            println!("MISMATCH {addr} r{:08x} :: {:08x}", rval, val);
         }
-        remaining = &tail;
+        /*
+        if i < 10 || i == 256 {
+            println!("{:08x} :: {:08x}", val, rval);
+        }
+        */
     }
+  
+    // let mut flash = SpiNand::new(spi);
+
+    // println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
+
+    // let mut page = [0u8; 256];
+    // flash.copy_into(0, &mut page);
 
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
 
-    println!("OREBOOT").ok();
-    println!("Test succeeded! 🦀").ok();
+    unsafe {
+        for _ in 0..10_000_000 {
+            core::arch::asm!("nop")
+        }
+    }
+    let addr = RAM_BASE;
+    println!("Run payload at {:#x}", addr);
+    unsafe {
+        let f: unsafe extern "C" fn() = transmute(addr);
+        f();
+        // let f = transmute::<usize, EntryPoint>(addr);
+        // f(0, 0);
+    }
+  
+    // println!("OREBOOT").ok();
+    // println!("Test succeeded! 🦀").ok();
 }
 
 // should jump to dram but not reach there
