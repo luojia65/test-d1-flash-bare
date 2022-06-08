@@ -5,11 +5,14 @@
 #![no_std]
 #![no_main]
 
-use core::intrinsics::transmute;
-use core::ptr::{read_volatile, write_volatile};
-use core::{arch::asm, panic::PanicInfo};
+use core::{
+    arch::asm,
+    intrinsics::transmute,
+    panic::PanicInfo,
+    ptr::{read_volatile, write_volatile},
+};
 use d1_pac::Peripherals;
-use embedded_hal::digital::{blocking::OutputPin, PinState};
+use embedded_hal::digital::blocking::OutputPin;
 
 #[macro_use]
 mod logging;
@@ -27,7 +30,7 @@ use gpio::Gpio;
 use jtag::Jtag;
 use mctl::RAM_BASE;
 use spi::Spi;
-use spi_flash::{SpiNand, SpiNor};
+use spi_flash::SpiNand;
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
@@ -180,10 +183,10 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    println!("oreboot 🦀");
+    let _ = println!("oreboot 🦀");
 
     let ram_size = mctl::init();
-    println!("{}M 🐏", ram_size);
+    let _ = println!("{}M 🐏", ram_size);
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
@@ -191,62 +194,53 @@ extern "C" fn main() {
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
-  
-    let mut flash = SpiNor::new(spi);
 
-    // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
-    // see flashrom/flashchips.h for details and more
-    let id = flash.read_id();
-    println!("SPI flash vendor {:x} part {:x}{:x}\n", id[0], id[1], id[2],);
+    // // nor flash
+    // {
+    //     let mut flash = SpiNor::new(spi);
 
-    // 32K, the size of boot0
-    let base = 0x1 << 15;
-    let size: usize = 15400;
-    for i in 0..size {
-        let off = base + i * 4;
-        let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
+    //     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
+    //     // see flashrom/flashchips.h for details and more
+    //     let id = flash.read_id();
+    //     let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],);
+    //     let _ = println!();
 
-        let addr = RAM_BASE + i * 4;
-        let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
-        unsafe { write_volatile(addr as *mut u32, val) };
-        let rval = unsafe { read_volatile(addr as *mut u32) };
+    //     // 32K, the size of boot0
+    //     let base = 0x1 << 15;
+    //     let size: usize = 15400;
+    //     for i in 0..size {
+    //         let off = base + i * 4;
+    //         let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-        if rval != val {
-            println!("MISMATCH {addr} r{:08x} :: {:08x}", rval, val);
-        }
-        /*
-        if i < 10 || i == 256 {
-            println!("{:08x} :: {:08x}", val, rval);
-        }
-        */
+    //         let addr = RAM_BASE + i * 4;
+    //         let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
+    //         unsafe { write_volatile(addr as *mut u32, val) };
+    //         let rval = unsafe { read_volatile(addr as *mut u32) };
+
+    //         if rval != val {
+    //             println!("MISMATCH {} r{} :: {}", addr, rval, val);
+    //         }
+    //     }
+    //     let _ = flash.free().free();
+    // }
+
+    // nand flash
+    {
+        let mut flash = SpiNand::new(spi);
+        println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
+        let mut page = [0u8; 256];
+        flash.copy_into(0, &mut page);
+        let _ = flash.free().free();
     }
-  
-    // let mut flash = SpiNand::new(spi);
 
-    // println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
-
-    // let mut page = [0u8; 256];
-    // flash.copy_into(0, &mut page);
-
-    let spi = flash.free();
-    let (_spi, _pins) = spi.free();
-
-    unsafe {
-        for _ in 0..10_000_000 {
-            core::arch::asm!("nop")
-        }
+    for _ in 0..1000_0000 {
+        core::hint::spin_loop();
     }
-    let addr = RAM_BASE;
-    println!("Run payload at {:#x}", addr);
+    let _ = println!("Run payload at {}", RAM_BASE);
     unsafe {
-        let f: unsafe extern "C" fn() = transmute(addr);
+        let f: unsafe extern "C" fn() = transmute(RAM_BASE);
         f();
-        // let f = transmute::<usize, EntryPoint>(addr);
-        // f(0, 0);
     }
-  
-    // println!("OREBOOT").ok();
-    // println!("Test succeeded! 🦀").ok();
 }
 
 // should jump to dram but not reach there
@@ -259,10 +253,12 @@ extern "C" fn cleanup() -> ! {
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
-        println!("panic occurred in file '{}' at line {}",
+        println!(
+            "panic occurred in file '{}' at line {}",
             location.file(),
             location.line(),
-        ).ok();
+        )
+        .ok();
     } else {
         println!("panic occurred but can't get location information...").ok();
     };

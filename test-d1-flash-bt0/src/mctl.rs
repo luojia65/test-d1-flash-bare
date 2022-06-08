@@ -214,31 +214,32 @@ pub struct dram_parameters {
 */
 
 // taken from SPL
+#[rustfmt::skip]
 static mut DRAM_PARA: dram_parameters = dram_parameters {
-    dram_clk: 0x00000318,
-    dram_type: 0x00000003,
-    dram_zq: 0x007b7bfb,
-    dram_odt_en: 0x00000001,
-    dram_para1: 0x000010d2,
-    dram_para2: 0x00000000,
-    dram_mr0: 0x00001c70,
-    dram_mr1: 0x00000042,
-    dram_mr2: 0x00000018,
-    dram_mr3: 0x00000000,
-    dram_tpr0: 0x004a2195,
-    dram_tpr1: 0x02423190,
-    dram_tpr2: 0x0008b061,
-    dram_tpr3: 0xb4787896,
-    dram_tpr4: 0x00000000,
-    dram_tpr5: 0x48484848,
-    dram_tpr6: 0x00000048,
-    dram_tpr7: 0x1620121e,
-    dram_tpr8: 0x00000000,
-    dram_tpr9: 0x00000000,
-    dram_tpr10: 0x00000000,
-    dram_tpr11: 0x00870000,
-    dram_tpr12: 0x00000024,
-    dram_tpr13: 0x34050100,
+    dram_clk:            792, // 0x00000318, for lichee
+    dram_type:   0x0000_0003,
+    dram_zq:     0x007b_7bfb,
+    dram_odt_en: 0x0000_0001,
+    dram_para1:  0x0000_10f2, // 0x000010d2,
+    dram_para2:  0x0000_0000,
+    dram_mr0:    0x0000_1c70,
+    dram_mr1:    0x0000_0042,
+    dram_mr2:    0x0000_0000, // 0x00000018,
+    dram_mr3:    0x0000_0000,
+    dram_tpr0:   0x004a_2195,
+    dram_tpr1:   0x0242_3190,
+    dram_tpr2:   0x0008_b061,
+    dram_tpr3:   0xb478_7896,
+    dram_tpr4:   0x0000_0000,
+    dram_tpr5:   0x4848_4848,
+    dram_tpr6:   0x0000_0048,
+    dram_tpr7:   0x1620_121e,
+    dram_tpr8:   0x0000_0000,
+    dram_tpr9:   0x0000_0000,
+    dram_tpr10:  0x0000_0000,
+    dram_tpr11:  0x0076_0000, // 0x00870000,
+    dram_tpr12:  0x0000_0035, // 0x00000024,
+    dram_tpr13:  0x3405_0101, // 0x34050100,
 };
 
 fn readl(reg: usize) -> u32 {
@@ -1732,7 +1733,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         sdelay(20);
         if VERBOSE {
             let zq_val = readl(ZQ_VALUE);
-            println!("ZQ: 0x{:x}", zq_val);
+            println!("ZQ: {}", zq_val);
         }
     }
 
@@ -1772,7 +1773,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         if (para.dram_odt_en & 0x1) == 0 {
             println!("ODT off");
         } else {
-            println!("ZQ: 0x{:x}", para.dram_zq);
+            println!("ZQ: {}", para.dram_zq);
         }
     }
 
@@ -1781,7 +1782,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         if (para.dram_mr1 & 0x44) == 0 {
             println!("ODT off");
         } else {
-            println!("ODT: 0x{:x}", para.dram_mr1);
+            println!("ODT: {}", para.dram_mr1);
         }
     }
 

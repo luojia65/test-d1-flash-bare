@@ -1,12 +1,13 @@
 //! Serial Peripheral Interface (SPI)
-use core::marker::PhantomData;
-use core::ptr::write_volatile;
 
-use crate::ccu::{Clocks, Gating, Reset};
-use crate::gpio::{
-    portc::{PC2, PC3, PC4, PC5},
-    Function,
+use crate::{
+    ccu::{Clocks, Gating, Reset},
+    gpio::{
+        portc::{PC2, PC3, PC4, PC5},
+        Function,
+    },
 };
+use core::marker::PhantomData;
 use d1_pac::{
     spi0::{
         spi_gcr::{EN_A, MODE_A, TP_EN_A},
@@ -17,8 +18,8 @@ use d1_pac::{
 };
 
 // FIXME: Found in xboot, missing in manual
-const SPI0_BASE: usize = 0x0402_5000;
-const SPI0_CCR: usize = SPI0_BASE + 0x0024;
+// const SPI0_BASE: usize = 0x0402_5000;
+// const SPI0_CCR: usize = SPI0_BASE + 0x0024;
 
 /// D1 SPI peripheral
 pub struct Spi<SPI: Instance, PINS> {

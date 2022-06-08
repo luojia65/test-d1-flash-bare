@@ -1,11 +1,12 @@
 //! Log system for BT0
-//!
-//! todo: make module `log` crate comptaible
-use crate::gpio::{
-    portb::{PB8, PB9},
-    Function,
+
+use crate::{
+    gpio::{
+        portb::{PB8, PB9},
+        Function,
+    },
+    uart::{self, Serial},
 };
-use crate::uart::{self, Serial};
 use d1_pac::UART0;
 use embedded_hal::serial::nb::Write;
 use nb::block;

@@ -1,7 +1,7 @@
 ﻿use crate::spi::{Instance, Spi};
 
 mod consts {
-    #![allow(unused_variables)]
+    #![allow(unused)]
 
     pub(super) const CMD_GET_FEATURE: u8 = 0x0f;
     pub(super) const CMD_READ_ID: u8 = 0x9f;
@@ -50,18 +50,14 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     #[inline]
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
-
-        // FIXME: not on NOR :D
-        // self.wait();
+        self.wait();
         self.0.transfer([CMD_READ_ID], 1, &mut buf);
-
         buf
     }
 
     /// Copies bytes from `base` address to `buf`.
     #[inline]
     pub fn copy_into(&mut self, mut base: u32, mut buf: &mut [u8]) {
-        // println!("copy {} bytes from {base:#x}", buf.len());
         while !buf.is_empty() {
             let mut cmd = u32::to_be_bytes(base >> LEN_PAGE_BITS);
             cmd[0] = CMD_READ_PAGE;
@@ -124,31 +120,16 @@ impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
     #[inline]
     pub fn read_id(&self) -> [u8; 3] {
         let mut buf = [0u8; 3];
-
         self.0.transfer([CMD_READ_ID], 0, &mut buf);
-
         buf
     }
 
     /// Copies bytes from address `addr` to `buf`.
     #[inline]
     pub fn copy_into(&mut self, addr: [u8; 3]) -> [u8; 4] {
-        // println!("copy {} bytes from {addr:#x}", buf.len());
         let cmd = [CMD_NOR_READ, addr[0], addr[1], addr[2]];
-        self.wait();
         let mut buf = [0u8; 4];
         self.0.transfer(cmd, 0, &mut buf);
-
         buf
-    }
-}
-
-impl<SPI: Instance, PINS> SpiNor<SPI, PINS> {
-    #[inline]
-    fn wait(&self) {
-        // SPI NOR QPI: C0 P7..P0 is for setting read parameters
-        while false {
-            core::hint::spin_loop();
-        }
     }
 }
