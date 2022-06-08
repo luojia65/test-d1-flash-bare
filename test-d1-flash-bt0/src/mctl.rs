@@ -1,7 +1,7 @@
 use core::ptr::{read_volatile, write_volatile};
 
 // for verbose prints
-const VERBOSE: bool = true;
+const VERBOSE: bool = false;
 
 pub const RAM_BASE: usize = 0x40000000;
 
@@ -1488,7 +1488,46 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
     let mut mc_work_mode = MC_WORK_MODE_RANK0_1;
     let mut offs = 0;
 
-    // TODO: do the rest
+    // Scan per address line, until address wraps (i.e. see shadow)
+    fn scan_for_addr_wrap() -> u32 {
+        for i in 11..17 {
+            let mut done = true;
+            for j in 0..64 {
+                let ptr = RAM_BASE + j * 4;
+                let chk = ptr + (1 << (i + 11));
+                let exp = if j & 1 != 0 { ptr } else { !ptr };
+                if readl(chk) != exp as u32 {
+                    done = false;
+                    break;
+                }
+            }
+            if done {
+                return i;
+            }
+        }
+        return 16;
+    }
+
+    // Scan per address line, until address wraps (i.e. see shadow)
+    fn scan_for_addr_wrap2() -> u32 {
+        for i in 9..15 {
+            let mut done = true;
+            for j in 0..64 {
+                let ptr = RAM_BASE + j * 4;
+                let chk = ptr + (1 << i);
+                let exp = if j & 1 != 0 { ptr } else { !ptr };
+                if readl(chk) != exp as u32 {
+                    done = false;
+                    break;
+                }
+            }
+            if done {
+                return i;
+            }
+        }
+        return 13;
+    }
+
     for rank in 0..maxrank {
         // Set row mode
         let mut rval = readl(mc_work_mode);
@@ -1496,29 +1535,11 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         rval |= 0x000006f0;
         writel(mc_work_mode, rval);
         while readl(mc_work_mode) != rval {}
+        let i = scan_for_addr_wrap();
 
-        // Scan per address line, until address wraps (i.e. see shadow)
-        /*
-        for i in 11..16 {
-            chk = RAM_BASE + (1 << (i + 11));
-            ptr = RAM_BASE;
-            for j in 0..63 {
-                if (readl(chk) != ((j & 1) { ptr } else { !ptr }) > 0 {
-                    // goto out1;
-                }
-                ptr += 4;
-                chk += 4;
-            }
-            break;
-        out1: ;
+        if VERBOSE {
+            println!("DRAM rank {} row = {}", rank, i);
         }
-        if (i > 16) i = 16;
-        */
-        let i = 15; // FIXME above
-
-        /*
-        println!("DRAM rank {} row = {}", rank, i);
-        */
 
         // Store rows in para 1
         let shft = 4 + offs;
@@ -1583,25 +1604,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         writel(mc_work_mode, rval);
         while readl(mc_work_mode) != rval {}
 
-        /*
-        // Scan per address line, until address wraps (i.e. see shadow)
-        for i in 9..14 {
-            chk = RAM_BASE + (1 << i);
-            ptr = RAM_BASE;
-            for j in 0..64 {
-                let exp = if j & 1 != 0 { ptr } else { !ptr };
-                if readl(chk) != exp {
-                    goto out2;
-                }
-                ptr += 4;
-                chk += 4;
-            }
-            break;
-        out2:;
-        }
-        if (i > 13) i = 13;
-        */
-        let i = 11; // FIXME above
+        let i = scan_for_addr_wrap2();
         let pgsize = if i == 9 { 0 } else { 1 << (i - 10) };
 
         if VERBOSE {
@@ -1727,7 +1730,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x001);
         sdelay(20);
         let zq_val = readl(ZQ_VALUE);
-        println!("ZQ value = 0x{:#02x}***********", zq_val);
+        println!("ZQ value: 0x{:#02x}", zq_val);
     }
 
     // Set voltage
@@ -1748,7 +1751,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // Set SDRAM controller auto config
     if (para.dram_tpr13 & 0x1) == 0 {
         if let Err(msg) = auto_scan_dram_config(para) {
-            println!("[ERROR CONFIG] {}", msg);
+            println!("config fail {}", msg);
             return 0;
         }
     }
@@ -1774,7 +1777,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Init core, final run
     if let Err(msg) = mctl_core_init(para) {
-        println!("[ERROR DEBUG] {}", msg);
+        println!("init error {}", msg);
         return 0;
     };
 
@@ -1842,7 +1845,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
             return 0;
         }
         if let Err(msg) = dramc_simple_wr_test(mem_size, len) {
-            println!("[WRITE TEST] {}", msg);
+            println!("test fail {}", msg);
             return 0;
         }
     }
