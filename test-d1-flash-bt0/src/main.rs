@@ -196,10 +196,7 @@ extern "C" fn main() {
     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
     // see flashrom/flashchips.h for details and more
     let id = flash.read_id();
-    println!(
-        " | SPI flash\n  \\ vendor ID: {:x}\n   \\ flash ID: {:x}{:x}\n",
-        id[0], id[1], id[2],
-    );
+    println!("SPI flash vendor {:x} part {:x}{:x}\n", id[0], id[1], id[2],);
 
     // 32K, the size of boot0
     let base = 0x1 << 15;
