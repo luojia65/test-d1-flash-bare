@@ -191,6 +191,7 @@ extern "C" fn main() {
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
+  
     let mut flash = SpiNor::new(spi);
 
     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
@@ -219,6 +220,13 @@ extern "C" fn main() {
         }
         */
     }
+  
+    // let mut flash = SpiNand::new(spi);
+
+    // println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
+
+    // let mut page = [0u8; 256];
+    // flash.copy_into(0, &mut page);
 
     let spi = flash.free();
     let (_spi, _pins) = spi.free();
@@ -236,6 +244,9 @@ extern "C" fn main() {
         // let f = transmute::<usize, EntryPoint>(addr);
         // f(0, 0);
     }
+  
+    // println!("OREBOOT").ok();
+    // println!("Test succeeded! 🦀").ok();
 }
 
 // should jump to dram but not reach there
@@ -247,7 +258,14 @@ extern "C" fn cleanup() -> ! {
 
 #[cfg_attr(not(test), panic_handler)]
 fn panic(info: &PanicInfo) -> ! {
-    println!("{info}");
+    if let Some(location) = info.location() {
+        println!("panic occurred in file '{}' at line {}",
+            location.file(),
+            location.line(),
+        ).ok();
+    } else {
+        println!("panic occurred but can't get location information...").ok();
+    };
     loop {
         core::hint::spin_loop();
     }
