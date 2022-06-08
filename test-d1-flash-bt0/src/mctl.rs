@@ -1738,7 +1738,9 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Set voltage
     let rc = get_pmu_exists();
-    println!("PMU exists? {}", rc);
+    if VERBOSE {
+        println!("PMU exists? {}", rc);
+    }
 
     if !rc {
         dram_vol_set(para);
@@ -1764,7 +1766,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         3 => "DDR3",
         _ => "",
     };
-    println!("{}: {}MHz", dtype, para.dram_clk);
+    println!("{}@{}MHz", dtype, para.dram_clk);
 
     if VERBOSE {
         if (para.dram_odt_en & 0x1) == 0 {
@@ -1798,9 +1800,10 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         para.dram_para2 = (para.dram_para2 & 0xffff) | rc << 16;
     }
     let mem_size = rc;
-    println!("DRAM: {}M", mem_size);
+    if VERBOSE {
+        println!("DRAM: {}M", mem_size);
+    }
 
-    // TODO: define constants
     // Purpose ??
     // What is Auto SR?
     if para.dram_tpr13 & (1 << 30) != 0 {
@@ -1814,7 +1817,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         writel(UNKNOWN15, readl(UNKNOWN15) & (!0x1));
     }
 
-    // Pupose ??
+    // Purpose ??
     rc = readl(PGCR0) & !(0xf000);
     if (para.dram_tpr13 & 0x200) == 0 {
         if para.dram_type != 6 {

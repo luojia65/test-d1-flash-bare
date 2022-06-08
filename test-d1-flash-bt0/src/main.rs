@@ -183,7 +183,7 @@ extern "C" fn main() {
     println!("oreboot 🦀");
 
     let ram_size = mctl::init();
-    println!("How much 🐏? {}", ram_size);
+    println!("{}M 🐏", ram_size);
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
