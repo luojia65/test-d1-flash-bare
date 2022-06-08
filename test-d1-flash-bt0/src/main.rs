@@ -3,6 +3,8 @@
 #![no_std]
 #![no_main]
 
+use core::intrinsics::transmute;
+use core::ptr::{read_volatile, write_volatile};
 use core::{arch::asm, panic::PanicInfo};
 use d1_pac::Peripherals;
 use embedded_hal::digital::blocking::OutputPin;
@@ -29,9 +31,6 @@ use mctl::RAM_BASE;
 use spi::Spi;
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
-
-// taken from oreboot
-pub type EntryPoint = unsafe extern "C" fn(r0: usize, r1: usize);
 
 const STACK_SIZE: usize = 1 * 1024; // 1KiB
 
@@ -187,6 +186,8 @@ extern "C" fn main() -> usize {
         &clocks,
     );
 
+    let payload_addr = RAM_BASE;
+
     #[cfg(feature = "nor")]
     {
         use core::ptr::{read_volatile, write_volatile};
@@ -205,8 +206,8 @@ extern "C" fn main() -> usize {
             let off = base + i * 4;
             let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-            let addr = RAM_BASE + i * 4;
-            let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
+            let addr = payload_addr + i * 4;
+            let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
             unsafe { write_volatile(addr as *mut u32, val) };
             let rval = unsafe { read_volatile(addr as *mut u32) };
 
@@ -229,7 +230,12 @@ extern "C" fn main() -> usize {
     for _ in 0..1000_0000 {
         core::hint::spin_loop();
     }
-    println!("Run payload at {}", RAM_BASE).ok();
+
+    println!("Run payload at {}", payload_addr).ok();
+    unsafe {
+        let f: unsafe extern "C" fn() = transmute(payload_addr);
+        f();
+    }
 
     // returns an address of dram payload; now cpu would jump to this address
     // and run code inside
