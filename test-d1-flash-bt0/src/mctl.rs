@@ -1679,7 +1679,7 @@ fn auto_scan_dram_rank_width(para: &mut dram_parameters) -> Result<(), &'static 
     mctl_core_init(para)?;
 
     if readl(PGSR0) & (1 << 20) != 0 {
-        return Err("auto scan dram rank & width failed !");
+        return Err("auto scan rank/width");
     }
     // TODO: print success message
     dqs_gate_detect(para)?;
@@ -1716,7 +1716,9 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
-        println!("DRAM only has internal ZQ.");
+        if VERBOSE {
+            println!("DRAM only has internal ZQ.");
+        }
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
         writel(RES240_CTRL_REG, 0);
         sdelay(10);
@@ -1728,8 +1730,10 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         sdelay(10);
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x001);
         sdelay(20);
-        let zq_val = readl(ZQ_VALUE);
-        println!("ZQ value: 0x{:#02x}", zq_val);
+        if VERBOSE {
+            let zq_val = readl(ZQ_VALUE);
+            println!("ZQ: 0x{:x}", zq_val);
+        }
     }
 
     // Set voltage
@@ -1755,24 +1759,29 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         }
     }
 
-    /*
-    // Print header message (too late)
-    println!("DRAM BOOT DRIVE INFO: {}", "V0.24");
-    println!("DRAM CLK = {} MHz", para.dram_clk);
-    println!("DRAM Type = {} (2:DDR2,3:DDR3)", para.dram_type);
-    if (para.dram_odt_en & 0x1) == 0 {
-        println!("DRAMC read ODT  off.");
-    } else {
-        println!("DRAMC ZQ value: 0x{:x}", para.dram_zq);
+    let dtype = match para.dram_type {
+        2 => "DDR2",
+        3 => "DDR3",
+        _ => "",
+    };
+    println!("{}: {}MHz", dtype, para.dram_clk);
+
+    if VERBOSE {
+        if (para.dram_odt_en & 0x1) == 0 {
+            println!("ODT off");
+        } else {
+            println!("ZQ: 0x{:x}", para.dram_zq);
+        }
     }
 
-    // report ODT
-    if (para.dram_mr1 & 0x44) == 0 {
-        println!("DRAM ODT off.");
-    } else {
-        println!("DRAM ODT value: 0x{:x}.", para.dram_mr1);
+    if VERBOSE {
+        // report ODT
+        if (para.dram_mr1 & 0x44) == 0 {
+            println!("ODT off");
+        } else {
+            println!("ODT: 0x{:x}", para.dram_mr1);
+        }
     }
-    */
 
     // Init core, final run
     if let Err(msg) = mctl_core_init(para) {
@@ -1782,7 +1791,6 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 
     // Get sdram size
     let mut rc: u32 = para.dram_para2;
-    // println!("DRAM RC {}", rc);
     if rc != 0 {
         rc = (rc & 0x7fff0000) >> 16;
     } else {
