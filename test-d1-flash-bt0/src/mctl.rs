@@ -1454,16 +1454,15 @@ fn dramc_simple_wr_test(mem_mb: u32, len: u32) -> Result<(), &'static str> {
         let exp = patt1 + i;
         if val != exp {
             // println!("{:x} != {:x} at address {:x}", val, exp, addr);
-            return Err("DRAM simple test FAIL.");
+            return Err("base");
         }
         let val = readl(addr + offs);
         let exp = patt2 + i;
         if val != exp {
             // println!("{:x} != {:x} at address {:x}", val, exp, addr + offs);
-            return Err("DRAM simple test FAIL.");
+            return Err("offs");
         }
     }
-    println!("DRAM simple test OK.");
     Ok(())
 }
 
@@ -1848,6 +1847,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
             println!("test fail {}", msg);
             return 0;
         }
+        println!("test OK");
     }
 
     handler_super_standby();
