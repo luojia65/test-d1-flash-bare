@@ -154,22 +154,25 @@ extern "C" fn main() {
     let tdo = gpio.portf.pf3.into_function_4();
     let _jtag = Jtag::new((tms, tck, tdi, tdo));
 
-    // light up led
-    let mut pb5 = gpio.portb.pb5.into_output();
-    pb5.set_high().unwrap();
-    // FIXME: This is broken. It worked before. Breakage happened in commit:
-    // fd7f6b8bc2eebb25f888ded040566e591f037e9a
-    let mut pc1 = gpio.portc.pc1.into_output();
-    pc1.set_high().unwrap();
+    #[cfg(feature = "lichee")]
+    {
+        // light up led
+        let mut pb5 = gpio.portb.pb5.into_output();
+        pb5.set_high().unwrap();
+        // FIXME: This is broken. It worked before. Breakage happened in commit:
+        // fd7f6b8bc2eebb25f888ded040566e591f037e9a
+        let mut pc1 = gpio.portc.pc1.into_output();
+        pc1.set_high().unwrap();
 
-    // Change into output mode
-    let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
-    let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
-    unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
-    // Set pin to HIGH
-    let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
-    val = pc_dat0 | 0b1 << 1;
-    unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
+        // Change into output mode
+        let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
+        let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
+        unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
+        // Set pin to HIGH
+        let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
+        val = pc_dat0 | 0b1 << 1;
+        unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
+    }
 
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
@@ -195,36 +198,36 @@ extern "C" fn main() {
     let miso = gpio.portc.pc5.into_function_2();
     let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
 
-    // // nor flash
-    // {
-    //     let mut flash = SpiNor::new(spi);
+    #[cfg(feature = "nor")]
+    {
+        let mut flash = SpiNor::new(spi);
 
-    //     // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
-    //     // see flashrom/flashchips.h for details and more
-    //     let id = flash.read_id();
-    //     let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],);
-    //     let _ = println!();
+        // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
+        // see flashrom/flashchips.h for details and more
+        let id = flash.read_id();
+        let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],);
+        let _ = println!();
 
-    //     // 32K, the size of boot0
-    //     let base = 0x1 << 15;
-    //     let size: usize = 15400;
-    //     for i in 0..size {
-    //         let off = base + i * 4;
-    //         let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
+        // 32K, the size of boot0
+        let base = 0x1 << 15;
+        let size: usize = 15400;
+        for i in 0..size {
+            let off = base + i * 4;
+            let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-    //         let addr = RAM_BASE + i * 4;
-    //         let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
-    //         unsafe { write_volatile(addr as *mut u32, val) };
-    //         let rval = unsafe { read_volatile(addr as *mut u32) };
+            let addr = RAM_BASE + i * 4;
+            let val = u32::from_le_bytes([buf[3], buf[2], buf[1], buf[0]]);
+            unsafe { write_volatile(addr as *mut u32, val) };
+            let rval = unsafe { read_volatile(addr as *mut u32) };
 
-    //         if rval != val {
-    //             println!("MISMATCH {} r{} :: {}", addr, rval, val);
-    //         }
-    //     }
-    //     let _ = flash.free().free();
-    // }
+            if rval != val {
+                println!("MISMATCH {} r{} :: {}", addr, rval, val);
+            }
+        }
+        let _ = flash.free().free();
+    }
 
-    // nand flash
+    #[cfg(feature = "nand")]
     {
         let mut flash = SpiNand::new(spi);
         println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();

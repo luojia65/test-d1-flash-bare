@@ -216,15 +216,21 @@ pub struct dram_parameters {
 // taken from SPL
 #[rustfmt::skip]
 static mut DRAM_PARA: dram_parameters = dram_parameters {
-    dram_clk:            792, // 0x00000318, for lichee
+    dram_clk:            792,
     dram_type:   0x0000_0003,
     dram_zq:     0x007b_7bfb,
     dram_odt_en: 0x0000_0001,
-    dram_para1:  0x0000_10f2, // 0x000010d2,
+    #[cfg(feature="nezha")]
+    dram_para1:  0x0000_10f2,
+    #[cfg(feature="lichee")]
+    dram_para1:  0x0000_10d2,
     dram_para2:  0x0000_0000,
     dram_mr0:    0x0000_1c70,
     dram_mr1:    0x0000_0042,
-    dram_mr2:    0x0000_0000, // 0x00000018,
+    #[cfg(feature="nezha")]
+    dram_mr2:    0x0000_0000,
+    #[cfg(feature="lichee")]
+    dram_mr2:    0x0000_0018,
     dram_mr3:    0x0000_0000,
     dram_tpr0:   0x004a_2195,
     dram_tpr1:   0x0242_3190,
@@ -237,9 +243,18 @@ static mut DRAM_PARA: dram_parameters = dram_parameters {
     dram_tpr8:   0x0000_0000,
     dram_tpr9:   0x0000_0000,
     dram_tpr10:  0x0000_0000,
-    dram_tpr11:  0x0076_0000, // 0x00870000,
-    dram_tpr12:  0x0000_0035, // 0x00000024,
-    dram_tpr13:  0x3405_0101, // 0x34050100,
+    #[cfg(feature="nezha")]
+    dram_tpr11:  0x0076_0000,
+    #[cfg(feature="lichee")]
+    dram_tpr11:  0x0087_0000,
+    #[cfg(feature="nezha")]
+    dram_tpr12:  0x0000_0035,
+    #[cfg(feature="lichee")]
+    dram_tpr12:  0x0000_0024,
+    #[cfg(feature="nezha")]
+    dram_tpr13:  0x3405_0101,
+    #[cfg(feature="lichee")]
+    dram_tpr13:  0x3405_0100,
 };
 
 fn readl(reg: usize) -> u32 {
