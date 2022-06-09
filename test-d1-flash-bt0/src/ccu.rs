@@ -1,10 +1,9 @@
 use crate::time::Hz;
 use d1_pac::ccu::RegisterBlock as CcuRb;
 
-// todo: peripheral clock, and should we use them in DDR?
 #[derive(Debug)]
 pub struct Clocks {
-    // pub psi: Hz, // todo: psi clock, it's related to SPI
+    pub psi: Hz,
     pub apb1: Hz,
 }
 

@@ -10,6 +10,7 @@ use crate::{
 };
 use core::marker::PhantomData;
 use d1_pac::{
+    ccu::spi0_clk::FACTOR_N_A,
     spi0::{
         spi_gcr::{EN_A, MODE_A, TP_EN_A},
         spi_tcr::{CPHA_A, CPOL_A, SPOL_A, SS_OWNER_A, SS_SEL_A},
@@ -17,6 +18,7 @@ use d1_pac::{
     },
     CCU, SPI0,
 };
+use embedded_hal::spi::{Phase, Polarity};
 
 pub use embedded_hal::spi::Mode;
 #[allow(unused)]
@@ -45,8 +47,39 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
     {
         // see [xboot](https://github.com/xboot/xboot/blob/master/src/arch/riscv64/mach-d1/driver/spi-d1.c)
         // 1. unwrap parameters
-        // todo use these parameters
-        let _ = (mode, freq, clocks);
+        let (Hz(freq), Hz(psi)) = (freq, clocks.psi);
+        let (factor_n, factor_m) = {
+            let mut err = psi;
+            let (mut best_n, mut best_m) = (0, 0);
+            for m in 1u8..=16 {
+                for n in [1, 2, 4, 8] {
+                    let actual = psi / n / m as u32;
+                    if actual.abs_diff(freq) < err {
+                        err = actual.abs_diff(freq);
+                        (best_n, best_m) = (n, m);
+                    }
+                }
+            }
+            let factor_n = match best_n {
+                1 => FACTOR_N_A::N1,
+                2 => FACTOR_N_A::N2,
+                4 => FACTOR_N_A::N4,
+                8 => FACTOR_N_A::N8,
+                _ => unreachable!(),
+            };
+            let factor_m = best_m - 1;
+            (factor_n, factor_m)
+        };
+        // SPI mode. 'Active low' or idle high. TODO: verify
+        // mode config: CPOL HIGH + CPHA P1 => mode 3 (TODO: verify); manual p932 table 9-9
+        let cpol = match mode.polarity {
+            Polarity::IdleHigh => CPOL_A::LOW,
+            Polarity::IdleLow => CPOL_A::HIGH,
+        };
+        let cpha = match mode.phase {
+            Phase::CaptureOnFirstTransition => CPHA_A::P0,
+            Phase::CaptureOnSecondTransition => CPHA_A::P1,
+        };
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
@@ -56,8 +89,8 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
         #[rustfmt::skip]
         ccu.spi0_clk.write(|w| w
             .clk_src_sel().pll_peri_1x()
-            .factor_n()   .n1()
-            .factor_m()   .variant(6 - 1)
+            .factor_n()   .variant(factor_n)
+            .factor_m()   .variant(factor_m)
             .clk_gating() .set_bit()
         );
         // 断开接地，连接时钟
@@ -96,14 +129,13 @@ impl<SPI: Instance, PINS> Spi<SPI, PINS> {
             }
         }
         // 4. 配置工作模式
-        // mode config: CPOL HIGH + CPHA P1 => mode 3; manual p932 table 9-9
         #[rustfmt::skip]
         spi.spi_tcr.write(|w| w
             .ss_owner().variant(SS_OWNER_A::SPI_CONTROLLER)
             .ss_sel()  .variant(SS_SEL_A::SS0)
             .spol()    .variant(SPOL_A::LOW)
-            .cpol()    .variant(CPOL_A::HIGH)
-            .cpha()    .variant(CPHA_A::P1)
+            .cpol()    .variant(cpol)
+            .cpha()    .variant(cpha)
         );
         /*
         // TODO: do delay calibration properly

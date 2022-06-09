@@ -44,7 +44,7 @@ pub fn set_logger(serial: S) {
 #[macro_export(local_inner_macros)]
 macro_rules! print {
     ($($arg:tt)*) => ({
-        let mut logger = crate::logging::LOGGER.wait().inner.lock();
+        let mut logger = $crate::logging::LOGGER.wait().inner.lock();
         let ans = ufmt::uwrite!(logger, $($arg)*);
         drop(logger);
         ans
@@ -55,7 +55,7 @@ macro_rules! print {
 macro_rules! println {
     () => ($crate::print!("\r\n"));
     ($fmt: literal $(, $($arg: tt)+)?) => ({
-        let mut logger = crate::logging::LOGGER.wait().inner.lock();
+        let mut logger = $crate::logging::LOGGER.wait().inner.lock();
         let ans = ufmt::uwrite!(logger, $fmt $(, $($arg)+)?);
         drop(logger);
         let _ = $crate::print!("\r\n");

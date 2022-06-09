@@ -139,7 +139,7 @@ extern "C" fn main() -> usize {
     let p = Peripherals::take().unwrap();
     // rom provided clock frequency, it's hard coded in bt0 stage
     let clocks = Clocks {
-        // psi: todo!().hz(),
+        psi: 600_000_000.hz(),
         apb1: 24_000_000.hz(),
     };
     let gpio = Gpio::new(p.GPIO);
@@ -183,12 +183,13 @@ extern "C" fn main() -> usize {
         p.SPI0,
         (sck, scs, mosi, miso),
         spi::MODE_3,
-        0.hz(), /* todo */
+        100_000_000.hz(),
         &clocks,
     );
 
     #[cfg(feature = "nor")]
     {
+        use core::ptr::{read_volatile, write_volatile};
         let mut flash = SpiNor::new(spi);
 
         // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
