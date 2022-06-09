@@ -1,7 +1,10 @@
 //! General Purpose Input-Output
-use core::marker::PhantomData;
-use core::mem::transmute;
-use core::ptr::{read_volatile, write_volatile};
+
+use core::{
+    marker::PhantomData,
+    mem::transmute,
+    ptr::{read_volatile, write_volatile},
+};
 use d1_pac::GPIO;
 
 /// Individual GPIO pin
