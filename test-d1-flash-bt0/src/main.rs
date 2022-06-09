@@ -129,17 +129,20 @@ pub unsafe extern "C" fn start() -> ! {
         "add    sp, sp, t0",
         "la     a0, {head_data}",
         "j      {main}",
-        "j      {cleanup}",
+        // function `main` returns address of next stage,
+        // it drops all peripherals it holds when goes out of scope
+        // now, jump to dram code
+        "j      {finish}",
         stack      =   sym SBI_STACK,
         stack_size = const STACK_SIZE,
         head_data  =   sym HEAD_DATA,
         main       =   sym main,
-        cleanup    =   sym cleanup,
+        finish     =   sym finish,
         options(noreturn)
     )
 }
 
-extern "C" fn main() {
+extern "C" fn main() -> usize {
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     let p = Peripherals::take().unwrap();
     let clocks = Clocks {
@@ -186,10 +189,10 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    let _ = println!("oreboot 🦀").ok();
+    println!("oreboot 🦀").ok();
 
     let ram_size = mctl::init();
-    let _ = println!("{}M 🐏", ram_size).ok();
+    println!("{}M 🐏", ram_size).ok();
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
@@ -205,8 +208,8 @@ extern "C" fn main() {
         // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
         // see flashrom/flashchips.h for details and more
         let id = flash.read_id();
-        let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
-        let _ = println!().ok();
+        println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
+        println!().ok();
 
         // 32K, the size of boot0
         let base = 0x1 << 15;
@@ -239,18 +242,17 @@ extern "C" fn main() {
     for _ in 0..1000_0000 {
         core::hint::spin_loop();
     }
-    let _ = println!("Run payload at {}", RAM_BASE).ok();
-    unsafe {
-        let f: unsafe extern "C" fn() = transmute(RAM_BASE);
-        f();
-    }
+    println!("Run payload at {}", RAM_BASE).ok();
+
+    // returns an address of dram payload; now cpu would jump to this address
+    // and run code inside
+    RAM_BASE
 }
 
-// should jump to dram but not reach there
-extern "C" fn cleanup() -> ! {
-    loop {
-        unsafe { asm!("wfi") };
-    }
+// jump to dram
+extern "C" fn finish(address: extern "C" fn()) -> ! {
+    unsafe { asm!("jr {}", in(reg) address) }
+    loop { unsafe { asm!("wfi") }}
 }
 
 #[cfg_attr(not(test), panic_handler)]
