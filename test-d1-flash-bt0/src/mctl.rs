@@ -30,13 +30,13 @@ const DRAM_BGR: usize = CCU + 0x080c;
  */
 
 const SYS_CFG: usize = 0x0300_0000; // 0x0300_0000 - 0x0300_0FFF
-const VER_REG: usize = SYS_CFG + 0x0024;
-const EMAC_EPHY_CLK_REG0: usize = SYS_CFG + 0x0030;
+                                    // const VER_REG: usize = SYS_CFG + 0x0024;
+                                    // const EMAC_EPHY_CLK_REG0: usize = SYS_CFG + 0x0030;
 const SYS_LDO_CTRL_REG: usize = SYS_CFG + 0x0150;
 const RES_CAL_CTRL_REG: usize = SYS_CFG + 0x0160;
 const RES240_CTRL_REG: usize = SYS_CFG + 0x0168;
-const RES_CAL_STATUS_REG: usize = SYS_CFG + 0x016c;
-const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
+// const RES_CAL_STATUS_REG: usize = SYS_CFG + 0x016c;
+// const ZQ_INTERNAL: usize = SYS_CFG + 0x016e;
 const ZQ_VALUE: usize = SYS_CFG + 0x0172;
 
 const BAR_BASE: usize = 0x0700_0000; // TODO: What do we call this?
@@ -124,8 +124,8 @@ const DRAMTMG2: usize = MSI_MEMC_BASE + 0x1060; // 0x3103060;
 const DRAMTMG3: usize = MSI_MEMC_BASE + 0x1064; // 0x3103064;
 const DRAMTMG4: usize = MSI_MEMC_BASE + 0x1068; // 0x3103068;
 const DRAMTMG5: usize = MSI_MEMC_BASE + 0x106c; // 0x310306c;
-const DRAMTMG6: usize = MSI_MEMC_BASE + 0x1070; // 0x3103070;
-const DRAMTMG7: usize = MSI_MEMC_BASE + 0x1074; // 0x3103074;
+                                                // const DRAMTMG6: usize = MSI_MEMC_BASE + 0x1070; // 0x3103070;
+                                                // const DRAMTMG7: usize = MSI_MEMC_BASE + 0x1074; // 0x3103074;
 const DRAMTMG8: usize = MSI_MEMC_BASE + 0x1078; // 0x3103078;
 const UNKNOWN8: usize = MSI_MEMC_BASE + 0x107c; // 0x310307c
 const PITMG0: usize = MSI_MEMC_BASE + 0x1080; // 0x3103080;
@@ -158,7 +158,7 @@ const DX1GCR0: usize = MSI_MEMC_BASE + 0x13c4; // 0x31033c4;
 const DAT01IOCR: usize = MSI_MEMC_BASE + 0x1390; // 0x3103390
 
 const UNKNOWN5: usize = MSI_MEMC_BASE + 0x13c8; // 0x31033C8
-const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
+                                                // const DAT03IOCR: usize = MSI_MEMC_BASE + 0x1510; // 0x3103510
 
 // TODO: *_BASE ?
 const MC_WORK_MODE_RANK1_1: usize = MSI_MEMC_BASE + 0x10_0000;
@@ -382,12 +382,12 @@ unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
 }
 
 unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
-    let vol = match dram_para.dram_type {
-        2 => 47, // 1.8V
-        3 => 25, // 1.5V
-        _ => 0,
-    };
-    let vol = 25; // XXX
+    // let vol = match dram_para.dram_type {
+    //     2 => 47, // 1.8V
+    //     3 => 25, // 1.5V
+    //     _ => 0,
+    // };
+    let vol = 25; // FIXME XXX
     let mut reg = readl(SYS_LDO_CTRL_REG);
     reg &= !(0xff00);
     reg |= vol << 8;

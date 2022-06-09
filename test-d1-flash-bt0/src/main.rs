@@ -3,11 +3,7 @@
 #![no_std]
 #![no_main]
 
-use core::{
-    arch::asm,
-    panic::PanicInfo,
-    ptr::{read_volatile, write_volatile},
-};
+use core::{arch::asm, panic::PanicInfo};
 use d1_pac::Peripherals;
 use embedded_hal::digital::blocking::OutputPin;
 
