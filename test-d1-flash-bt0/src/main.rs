@@ -14,20 +14,23 @@ use embedded_hal::digital::blocking::OutputPin;
 #[macro_use]
 mod logging;
 mod ccu;
+mod flash;
 mod gpio;
 mod jtag;
 mod mctl;
 mod spi;
-mod spi_flash;
 mod time;
 mod uart;
 
 use ccu::Clocks;
+#[cfg(feature = "nand")]
+use flash::SpiNand;
+#[cfg(feature = "nor")]
+use flash::SpiNor;
 use gpio::Gpio;
 use jtag::Jtag;
 use mctl::RAM_BASE;
 use spi::Spi;
-use spi_flash::SpiNand;
 use time::U32Ext;
 use uart::{Config, Parity, Serial, StopBits, WordLength};
 
@@ -150,14 +153,11 @@ extern "C" fn main() -> usize {
     let tdo = gpio.portf.pf3.into_function_4();
     let _jtag = Jtag::new((tms, tck, tdi, tdo));
 
-    // #[cfg(feature = "lichee")]
-    // {
-        // light up led
-        let mut pb5 = gpio.portb.pb5.into_output();
-        pb5.set_high().unwrap();
-        let mut pc1 = gpio.portc.pc1.into_output();
-        pc1.set_high().unwrap();
-    // }
+    // light up led
+    let mut pb5 = gpio.portb.pb5.into_output();
+    pb5.set_high().unwrap();
+    let mut pc1 = gpio.portc.pc1.into_output();
+    pc1.set_high().unwrap();
 
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
@@ -234,7 +234,9 @@ extern "C" fn main() -> usize {
 // jump to dram
 extern "C" fn finish(address: extern "C" fn()) -> ! {
     unsafe { asm!("jr {}", in(reg) address) }
-    loop { unsafe { asm!("wfi") }}
+    loop {
+        unsafe { asm!("wfi") }
+    }
 }
 
 #[cfg_attr(not(test), panic_handler)]
