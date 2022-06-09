@@ -87,7 +87,7 @@ impl<UART: Instance, PINS: Pins<UART>> Serial<UART, PINS> {
              .erbfi()       .disable()
         });
         // 4. calculate and set baudrate
-        let uart_clk = (clock.uart_clock.0 + 8 * bps) / (16 * bps);
+        let uart_clk = (clock.apb1.0 + 8 * bps) / (16 * bps);
         let (dlh, dll) = ((uart_clk >> 8) as u8, (uart_clk & 0xff) as u8);
         uart.lcr.modify(|_, w| w.dlab().divisor_latch());
         uart.dlh().write(|w| unsafe { w.dlh().bits(dlh) });

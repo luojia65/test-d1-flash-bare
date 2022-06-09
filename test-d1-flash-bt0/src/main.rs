@@ -137,8 +137,10 @@ pub unsafe extern "C" fn start() -> ! {
 extern "C" fn main() -> usize {
     // there was configure_ccu_clocks, but ROM code have already done configuring for us
     let p = Peripherals::take().unwrap();
+    // rom provided clock frequency, it's hard coded in bt0 stage
     let clocks = Clocks {
-        uart_clock: 24_000_000.hz(), // hard coded
+        // psi: todo!().hz(),
+        apb1: 24_000_000.hz(),
     };
     let gpio = Gpio::new(p.GPIO);
 
@@ -172,12 +174,18 @@ extern "C" fn main() -> usize {
     let ram_size = mctl::init();
     println!("{}M 🐏", ram_size).ok();
 
-    // prepare spi interface
+    // prepare spi interface to use in flash
     let sck = gpio.portc.pc2.into_function_2();
     let scs = gpio.portc.pc3.into_function_2();
     let mosi = gpio.portc.pc4.into_function_2();
     let miso = gpio.portc.pc5.into_function_2();
-    let spi = Spi::new(p.SPI0, (sck, scs, mosi, miso), &clocks);
+    let spi = Spi::new(
+        p.SPI0,
+        (sck, scs, mosi, miso),
+        spi::MODE_3,
+        0.hz(), /* todo */
+        &clocks,
+    );
 
     #[cfg(feature = "nor")]
     {

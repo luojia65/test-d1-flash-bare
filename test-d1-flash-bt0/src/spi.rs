@@ -6,6 +6,7 @@ use crate::{
         portc::{PC2, PC3, PC4, PC5},
         Function,
     },
+    time::Hz,
 };
 use core::marker::PhantomData;
 use d1_pac::{
@@ -16,6 +17,10 @@ use d1_pac::{
     },
     CCU, SPI0,
 };
+
+pub use embedded_hal::spi::Mode;
+#[allow(unused)]
+pub use embedded_hal::spi::{MODE_0, MODE_1, MODE_2, MODE_3};
 
 // FIXME: Found in xboot, missing in manual
 // const SPI0_BASE: usize = 0x0402_5000;
@@ -34,13 +39,14 @@ struct Stub<SPI: Instance>(PhantomData<SPI>);
 impl<SPI: Instance, PINS> Spi<SPI, PINS> {
     /// Create instance of Spi in CPU mode (manual p939)
     #[inline]
-    pub fn new(spi: SPI, pins: PINS, _clocks: &Clocks) -> Self
+    pub fn new(spi: SPI, pins: PINS, mode: Mode, freq: Hz, clocks: &Clocks) -> Self
     where
         PINS: Pins<SPI>,
     {
         // see [xboot](https://github.com/xboot/xboot/blob/master/src/arch/riscv64/mach-d1/driver/spi-d1.c)
         // 1. unwrap parameters
-        // todo
+        // todo use these parameters
+        let _ = (mode, freq, clocks);
         // 2. init peripheral clocks
         // note(unsafe): async read and write using ccu registers
         let ccu = unsafe { &*CCU::ptr() };
