@@ -247,11 +247,11 @@ pub trait PinMode {
 }
 
 impl PinMode for Input {
-    const VALUE: u8 = 1;
+    const VALUE: u8 = 0;
 }
 
 impl PinMode for Output {
-    const VALUE: u8 = 2;
+    const VALUE: u8 = 1;
 }
 
 impl<const N: u8> PinMode for Function<N> {

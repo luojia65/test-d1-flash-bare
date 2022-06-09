@@ -1,13 +1,10 @@
 #![feature(naked_functions, asm_sym, asm_const)]
 #![feature(default_alloc_error_handler)]
-#![feature(let_chains)]
-#![feature(once_cell)]
 #![no_std]
 #![no_main]
 
 use core::{
     arch::asm,
-    intrinsics::transmute,
     panic::PanicInfo,
     ptr::{read_volatile, write_volatile},
 };
@@ -38,10 +35,6 @@ use uart::{Config, Parity, Serial, StopBits, WordLength};
 pub type EntryPoint = unsafe extern "C" fn(r0: usize, r1: usize);
 
 const STACK_SIZE: usize = 1 * 1024; // 1KiB
-
-const GPIO_BASE_ADDR: u32 = 0x0200_0000;
-const GPIO_PC_CFG0: u32 = GPIO_BASE_ADDR + 0x0060;
-const GPIO_PC_DATA: u32 = GPIO_BASE_ADDR + 0x0070;
 
 #[link_section = ".bss.uninit"]
 static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
@@ -157,25 +150,14 @@ extern "C" fn main() -> usize {
     let tdo = gpio.portf.pf3.into_function_4();
     let _jtag = Jtag::new((tms, tck, tdi, tdo));
 
-    #[cfg(feature = "lichee")]
-    {
+    // #[cfg(feature = "lichee")]
+    // {
         // light up led
         let mut pb5 = gpio.portb.pb5.into_output();
         pb5.set_high().unwrap();
-        // FIXME: This is broken. It worked before. Breakage happened in commit:
-        // fd7f6b8bc2eebb25f888ded040566e591f037e9a
         let mut pc1 = gpio.portc.pc1.into_output();
         pc1.set_high().unwrap();
-
-        // Change into output mode
-        let pc_cfg0 = unsafe { read_volatile(GPIO_PC_CFG0 as *const u32) };
-        let mut val = pc_cfg0 & 0xffffff0f | 0b0001 << 4;
-        unsafe { write_volatile(GPIO_PC_CFG0 as *mut u32, val) };
-        // Set pin to HIGH
-        let pc_dat0 = unsafe { read_volatile(GPIO_PC_DATA as *const u32) };
-        val = pc_dat0 | 0b1 << 1;
-        unsafe { write_volatile(GPIO_PC_DATA as *mut u32, val) };
-    }
+    // }
 
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
