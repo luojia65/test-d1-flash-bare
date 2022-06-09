@@ -1553,7 +1553,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         let i = scan_for_addr_wrap();
 
         if VERBOSE {
-            println!("rank {} row = {}", rank, i);
+            println!("rank {} row = {}", rank, i).ok();
         }
 
         // Store rows in para 1
@@ -1594,7 +1594,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         }
         let banks = (j + 1) << 2; // 4 or 8
         if VERBOSE {
-            println!("rank {} bank = {}", rank, banks);
+            println!("rank {} bank = {}", rank, banks).ok();
         }
 
         // Store banks in para 1
@@ -1623,7 +1623,7 @@ fn auto_scan_dram_size(para: &mut dram_parameters) -> Result<(), &'static str> {
         let pgsize = if i == 9 { 0 } else { 1 << (i - 10) };
 
         if VERBOSE {
-            println!("rank {} page size = {}KB", rank, pgsize);
+            println!("rank {} page size = {}KB", rank, pgsize).ok();
         }
 
         // Store page size
@@ -1733,7 +1733,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
         if VERBOSE {
-            println!("DRAM only has internal ZQ.");
+            println!("DRAM only has internal ZQ.").ok();
         }
         writel(RES_CAL_CTRL_REG, readl(RES_CAL_CTRL_REG) | 0x100);
         writel(RES240_CTRL_REG, 0);
@@ -1748,14 +1748,14 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         sdelay(20);
         if VERBOSE {
             let zq_val = readl(ZQ_VALUE);
-            println!("ZQ: {}", zq_val);
+            println!("ZQ: {}", zq_val).ok();
         }
     }
 
     // Set voltage
     let rc = get_pmu_exists();
     if VERBOSE {
-        println!("PMU exists? {}", rc);
+        println!("PMU exists? {}", rc).ok();
     }
 
     if !rc {
@@ -1772,7 +1772,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     // Set SDRAM controller auto config
     if (para.dram_tpr13 & 0x1) == 0 {
         if let Err(msg) = auto_scan_dram_config(para) {
-            println!("config fail {}", msg);
+            println!("config fail {}", msg).ok();
             return 0;
         }
     }
@@ -1782,28 +1782,28 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         3 => "DDR3",
         _ => "",
     };
-    println!("{}@{}MHz", dtype, para.dram_clk);
+    println!("{}@{}MHz", dtype, para.dram_clk).ok();
 
     if VERBOSE {
         if (para.dram_odt_en & 0x1) == 0 {
-            println!("ODT off");
+            println!("ODT off").ok();
         } else {
-            println!("ZQ: {}", para.dram_zq);
+            println!("ZQ: {}", para.dram_zq).ok();
         }
     }
 
     if VERBOSE {
         // report ODT
         if (para.dram_mr1 & 0x44) == 0 {
-            println!("ODT off");
+            println!("ODT off").ok();
         } else {
-            println!("ODT: {}", para.dram_mr1);
+            println!("ODT: {}", para.dram_mr1).ok();
         }
     }
 
     // Init core, final run
     if let Err(msg) = mctl_core_init(para) {
-        println!("init error {}", msg);
+        println!("init error {}", msg).ok();
         return 0;
     };
 
@@ -1817,7 +1817,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
     }
     let mem_size = rc;
     if VERBOSE {
-        println!("DRAM: {}M", mem_size);
+        println!("DRAM: {}M", mem_size).ok();
     }
 
     // Purpose ??
@@ -1827,7 +1827,7 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
         writel(UNKNOWN11, if rc == 0 { 0x10000200 } else { rc });
         writel(UNKNOWN10, 0x40a);
         writel(UNKNOWN15, readl(UNKNOWN15) | 1);
-        // println!("Enable Auto SR");
+        // println!("Enable Auto SR").ok();
     } else {
         writel(UNKNOWN11, readl(UNKNOWN11) & 0xffff0000);
         writel(UNKNOWN15, readl(UNKNOWN15) & (!0x1));
@@ -1871,10 +1871,10 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
             return 0;
         }
         if let Err(msg) = dramc_simple_wr_test(mem_size, len) {
-            println!("test fail {}", msg);
+            println!("test fail {}", msg).ok();
             return 0;
         }
-        println!("test OK");
+        println!("test OK").ok();
     }
 
     handler_super_standby();
@@ -1883,6 +1883,6 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 }
 
 pub fn init() -> usize {
-    // println!("DRAM INIT");
+    // println!("DRAM INIT").ok();
     return unsafe { init_dram(&mut DRAM_PARA) };
 }

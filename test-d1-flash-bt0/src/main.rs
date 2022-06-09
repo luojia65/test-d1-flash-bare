@@ -186,10 +186,10 @@ extern "C" fn main() {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    let _ = println!("oreboot 🦀");
+    let _ = println!("oreboot 🦀").ok();
 
     let ram_size = mctl::init();
-    let _ = println!("{}M 🐏", ram_size);
+    let _ = println!("{}M 🐏", ram_size).ok();
 
     // prepare spi interface
     let sck = gpio.portc.pc2.into_function_2();
@@ -205,8 +205,8 @@ extern "C" fn main() {
         // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
         // see flashrom/flashchips.h for details and more
         let id = flash.read_id();
-        let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],);
-        let _ = println!();
+        let _ = println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
+        let _ = println!().ok();
 
         // 32K, the size of boot0
         let base = 0x1 << 15;
@@ -221,7 +221,7 @@ extern "C" fn main() {
             let rval = unsafe { read_volatile(addr as *mut u32) };
 
             if rval != val {
-                println!("MISMATCH {} r{} :: {}", addr, rval, val);
+                println!("MISMATCH {} r{} :: {}", addr, rval, val).ok();
             }
         }
         let _ = flash.free().free();
@@ -239,7 +239,7 @@ extern "C" fn main() {
     for _ in 0..1000_0000 {
         core::hint::spin_loop();
     }
-    let _ = println!("Run payload at {}", RAM_BASE);
+    let _ = println!("Run payload at {}", RAM_BASE).ok();
     unsafe {
         let f: unsafe extern "C" fn() = transmute(RAM_BASE);
         f();
