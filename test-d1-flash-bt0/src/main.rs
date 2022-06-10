@@ -199,9 +199,14 @@ extern "C" fn main() -> usize {
         println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
         println!().ok();
 
+        println!("copy oreboot");
         // 32K, the size of boot0
         let base = 0x1 << 15;
+        // oreboot
+        let size = (0x1 << 16) >> 2;
+        let base = 0x1 << 15;
         let size: usize = 15400;
+
         for i in 0..size {
             let off = base + i * 4;
             let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
@@ -209,12 +214,35 @@ extern "C" fn main() -> usize {
             let addr = payload_addr + i * 4;
             let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
             unsafe { write_volatile(addr as *mut u32, val) };
-            let rval = unsafe { read_volatile(addr as *mut u32) };
+        }
+        // LinuxBoot
+        let size = (0xee0000 + 0xe000) >> 2; // kernel + dtb
+        let base = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000; // 32K + oreboot + 64K + 4K
+        let lbas = RAM_BASE + 0x20_0000; // Linux expects to be at 0x4020_0000
+        println!("copy LinuxBoot");
+        for i in 0..size {
+            let off = base + i * 4;
+            let buf = flash.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-            if rval != val {
-                println!("MISMATCH {} r{} :: {}", addr, rval, val).ok();
+            let addr = lbas + i * 4;
+            let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+            unsafe { write_volatile(addr as *mut u32, val) };
+
+            let rval = unsafe { read_volatile(addr as *mut u32) };
+            if false && rval != val {
+                println!("MISMATCH {addr} r{:08x} :: {:08x}", rval, val);
+            }
+
+            if addr == 0x40200000 || addr == 0x410e0000 {
+                println!("d00dfeed? {:08x}", rval);
+            }
+
+            // progress indicator
+            if off % 0x10_0000 == 0 {
+                println!("a {:x} o {:x} v {:08x}", addr, off, val);
             }
         }
+
         let _ = flash.free().free();
     }
 
