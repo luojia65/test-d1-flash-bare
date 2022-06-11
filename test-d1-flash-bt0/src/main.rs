@@ -174,19 +174,33 @@ fn load(
         ),
     >,
 ) {
-    for i in 0..size {
-        let off = skip + i * 4;
+    for i in 0..size / 4 {
+        let off = skip + i * 16;
         let buf = f.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
-        let addr = base + i * 4;
+        let addr = base + i * 16;
         let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         unsafe { write_volatile(addr as *mut u32, val) };
+        check_val(addr, val);
 
+        let addr = base + i * 16 + 4;
+        let val = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        unsafe { write_volatile(addr as *mut u32, val) };
+        check_val(addr, val);
+
+        let addr = base + i * 16 + 8;
+        let val = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        unsafe { write_volatile(addr as *mut u32, val) };
+        check_val(addr, val);
+
+        let addr = base + i * 16 + 12;
+        let val = u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]);
+        unsafe { write_volatile(addr as *mut u32, val) };
         check_val(addr, val);
 
         // progress indicator
         if off % 0x10_0000 == 0 || (addr > RAM_BASE + 0xc400 && addr < RAM_BASE + 0xc4a0) {
-            println!("a {:#?} o {:#?} v {:#?}", addr, off, val);
+            println!("a {:#?} o {:#?} v {:#?}", addr, off, val).ok();
         }
     }
 }
