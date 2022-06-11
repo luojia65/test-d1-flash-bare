@@ -146,14 +146,14 @@ fn addr_to_exp(a: usize) -> u32 {
 fn check_val(addr: usize, val: u32) {
     let rval = unsafe { read_volatile(addr as *mut u32) };
     if false && rval != val {
-        println!("MISMATCH {} r{} :: {}", addr, rval, val).ok();
+        println!("MISMATCH {:#?} r{:#?} :: {:#?}", addr, rval, val).ok();
     }
 
     match addr {
         0x4000_0000 | 0x4020_0000 | 0x4120_0000 => {
             let exp = addr_to_exp(addr);
             let ok = if rval == exp as u32 { "OK" } else { "NO" };
-            println!("{}@{} - {}? {}", rval, addr, exp, ok).ok();
+            println!("{:#?}@{:#?} - {:#?}? {}", rval, addr, exp, ok).ok();
         }
         _ => {}
     };
@@ -186,7 +186,7 @@ fn load(
 
         // progress indicator
         if off % 0x10_0000 == 0 || (addr > RAM_BASE + 0xc400 && addr < RAM_BASE + 0xc4a0) {
-            println!("a {} o {} v {}", addr, off, val);
+            println!("a {:#?} o {:#?} v {:#?}", addr, off, val);
         }
     }
 }
@@ -240,7 +240,7 @@ extern "C" fn main() -> usize {
         p.SPI0,
         (sck, scs, mosi, miso),
         spi::MODE_3,
-        100_000_000.hz(),
+        24_000_000.hz(),
         &clocks,
     );
 
@@ -248,13 +248,16 @@ extern "C" fn main() -> usize {
 
     #[cfg(feature = "nor")]
     {
-        use core::ptr::{read_volatile, write_volatile};
         let mut flash = SpiNor::new(spi);
 
         // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
         // see flashrom/flashchips.h for details and more
         let id = flash.read_id();
-        println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
+        println!(
+            "SPI flash vendor {:#?} part {:#?}{:#?}",
+            id[0], id[1], id[2],
+        )
+        .ok();
         println!().ok();
 
         // oreboot
