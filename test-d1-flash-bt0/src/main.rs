@@ -133,6 +133,32 @@ pub unsafe extern "C" fn start() -> ! {
     )
 }
 
+// map well-known addresses to expected values
+fn addr_to_exp(a: usize) -> u32 {
+    match a {
+        0x4000_0000 => 0x30401073, // oreboot (mie)
+        0x4020_0000 => 0x0000a0d1, // Linux
+        0x4120_0000 => 0xedfe0dd0, // dtb (d00dfeed)
+        _ => 0x0,
+    }
+}
+
+fn check_val(addr: usize, val: u32) {
+    let rval = unsafe { read_volatile(addr as *mut u32) };
+    if false && rval != val {
+        println!("MISMATCH {} r{} :: {}", addr, rval, val).ok();
+    }
+
+    match addr {
+        0x4000_0000 | 0x4020_0000 | 0x4120_0000 => {
+            let exp = addr_to_exp(addr);
+            let ok = if rval == exp as u32 { "OK" } else { "NO" };
+            println!("{}@{} - {}? {}", rval, addr, exp, ok).ok();
+        }
+        _ => {}
+    };
+}
+
 #[cfg(feature = "nor")]
 fn load(
     skip: usize,
@@ -156,20 +182,10 @@ fn load(
         let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         unsafe { write_volatile(addr as *mut u32, val) };
 
-        let rval = unsafe { read_volatile(addr as *mut u32) };
-        if rval != val {
-            println!("MISMATCH {} r{} :: {}", addr, rval, val);
-        }
-
-        match addr {
-            0x40000000 | 0x40200000 | 0x410e0000 => {
-                println!("d00dfeed? {}", rval);
-            }
-            _ => {}
-        };
+        check_val(addr, val);
 
         // progress indicator
-        if off % 0x10_0000 == 0 {
+        if off % 0x10_0000 == 0 || (addr > RAM_BASE + 0xc400 && addr < RAM_BASE + 0xc4a0) {
             println!("a {} o {} v {}", addr, off, val);
         }
     }
@@ -241,25 +257,26 @@ extern "C" fn main() -> usize {
         println!("SPI flash vendor {} part {}{}", id[0], id[1], id[2],).ok();
         println!().ok();
 
-        println!("copy oreboot");
-        // 32K, the size of boot0
-        let base = 0x1 << 15;
-
         // oreboot
         // println!("copy oreboot");
         let size = (0x1 << 16) >> 2;
         let skip = 0x1 << 15; // 32K, the size of boot0
         load(skip, payload_addr, size, &mut flash);
+        load(skip, payload_addr, size, &mut flash);
+        load(skip, payload_addr, size, &mut flash);
 
         // LinuxBoot
-        // println!("copy LinuxBoot");
-        let size = (0xee0000 + 0xe000) >> 2; // kernel + dtb
+        println!("copy LinuxBoot").ok();
+        let size = (0x00ee_0000) >> 2; // kernel
         let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000; // 32K + oreboot + 64K + 4K
-        let base = RAM_BASE + 0x20_0000; // Linux expects to be at 0x4020_0000
+        let base = RAM_BASE + 0x0020_0000; // Linux expects to be at 0x4020_0000
         load(skip, base, size, &mut flash);
 
-        let spi = flash.free();
-        let (_spi, _pins) = spi.free();
+        // println!("copy dtb");
+        let size = (0x0000_e000) >> 2; // dtb
+        let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000 + 0xee0000; // 32K + oreboot + 64K + 4K + kernel
+        let base = RAM_BASE + 0x0020_0000 + 0x0100_0000; // Linux expects to be at 0x4020_0000
+        load(skip, base, size, &mut flash);
 
         let _ = flash.free().free();
     }
@@ -278,6 +295,11 @@ extern "C" fn main() -> usize {
     }
 
     println!("Run payload at {}", payload_addr).ok();
+
+    check_val(0x4000_0000, addr_to_exp(0x4000_0000));
+    check_val(0x4020_0000, addr_to_exp(0x4020_0000));
+    check_val(0x4120_0000, addr_to_exp(0x4120_0000));
+
     unsafe {
         let f: unsafe extern "C" fn() = transmute(payload_addr);
         f();
