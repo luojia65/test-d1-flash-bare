@@ -74,6 +74,13 @@ pub struct HeadData {
 
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
+const ORE_ADDR: usize = RAM_BASE;
+const LIN_ADDR: usize = ORE_ADDR + 0x20_0000; // Linux expects to be at 0x4020_0000
+const DTB_ADDR: usize = LIN_ADDR + 0x100_0000; // dtb must be 2MB aligned
+const DTB_END1: usize = DTB_ADDR + 0x6000;
+const DTB_END2: usize = DTB_ADDR + 0x6010;
+const DTB_END3: usize = DTB_ADDR + 0x6020;
+
 // clobber used by KEEP(*(.head.data)) in link script
 #[link_section = ".head.data"]
 pub static HEAD_DATA: HeadData = HeadData {
@@ -136,9 +143,12 @@ pub unsafe extern "C" fn start() -> ! {
 // map well-known addresses to expected values
 fn addr_to_exp(a: usize) -> u32 {
     match a {
-        0x4000_0000 => 0x30401073, // oreboot (mie)
-        0x4020_0000 => 0x0000a0d1, // Linux
-        0x4120_0000 => 0xedfe0dd0, // dtb (d00dfeed)
+        ORE_ADDR => 0x30401073, // oreboot (mie)
+        LIN_ADDR => 0x0000a0d1, // Linux
+        DTB_ADDR => 0xedfe0dd0, // dtb (d00dfeed)
+        DTB_END1 => 0x646e2c76, // dtb near end
+        DTB_END2 => 0x6d6d0079, // dtb near end
+        DTB_END3 => 0x756f6474, // dtb near end
         _ => 0x0,
     }
 }
@@ -150,7 +160,7 @@ fn check_val(addr: usize, val: u32) {
     }
 
     match addr {
-        0x4000_0000 | 0x4020_0000 | 0x4120_0000 => {
+        ORE_ADDR | LIN_ADDR | DTB_ADDR | DTB_END1 | DTB_END2 | DTB_END3 => {
             let exp = addr_to_exp(addr);
             let ok = if rval == exp as u32 { "OK" } else { "NO" };
             println!("{:#?}@{:#?} - {:#?}? {}", rval, addr, exp, ok).ok();
@@ -174,10 +184,23 @@ fn load(
         ),
     >,
 ) {
-    for i in 0..size / 4 {
-        let off = skip + i * 16;
+    let chunks = 4;
+    for i in 0..size / chunks {
+        let off = skip + i * 4 * chunks;
         let buf = f.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
 
+        for j in 0..chunks {
+            let jw = 4 * j;
+            let addr = base + i * 4 * chunks + jw;
+            let val = u32::from_le_bytes([buf[jw], buf[jw + 1], buf[jw + 2], buf[jw + 3]]);
+            unsafe { write_volatile(addr as *mut u32, val) };
+            check_val(addr, val);
+            // progress indicator each 2MB
+            if off % 0x10_0000 == 0 {
+                println!("a {:#?} o {:#?} v {:#?}", addr, off, val).ok();
+            }
+        }
+        /*
         let addr = base + i * 16;
         let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
         unsafe { write_volatile(addr as *mut u32, val) };
@@ -197,11 +220,7 @@ fn load(
         let val = u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]);
         unsafe { write_volatile(addr as *mut u32, val) };
         check_val(addr, val);
-
-        // progress indicator
-        if off % 0x10_0000 == 0 || (addr > RAM_BASE + 0xc400 && addr < RAM_BASE + 0xc4a0) {
-            println!("a {:#?} o {:#?} v {:#?}", addr, off, val).ok();
-        }
+        */
     }
 }
 
@@ -275,27 +294,25 @@ extern "C" fn main() -> usize {
         println!().ok();
 
         // oreboot
-        // println!("copy oreboot");
-        let size = (0x1 << 16) >> 2;
+        println!("copy oreboot").ok();
         let skip = 0x1 << 15; // 32K, the size of boot0
-        load(skip, payload_addr, size, &mut flash);
-        load(skip, payload_addr, size, &mut flash);
-        load(skip, payload_addr, size, &mut flash);
+        let size = (0x1 << 16) >> 2;
+        load(skip, ORE_ADDR, size, &mut flash);
 
         // LinuxBoot
         println!("copy LinuxBoot").ok();
+        // 32K + oreboot + 64K + 4K, see oreboot fdt
+        let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000;
         let size = (0x00ee_0000) >> 2; // kernel
-        let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000; // 32K + oreboot + 64K + 4K
-        let base = RAM_BASE + 0x0020_0000; // Linux expects to be at 0x4020_0000
-        load(skip, base, size, &mut flash);
+        load(skip, LIN_ADDR, size, &mut flash);
 
-        // println!("copy dtb");
+        println!("copy dtb").ok();
+        // 32K + oreboot + 64K + 4K + kernel
+        let skip = skip + 0xee0000;
         let size = (0x0000_e000) >> 2; // dtb
-        let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000 + 0xee0000; // 32K + oreboot + 64K + 4K + kernel
-        let base = RAM_BASE + 0x0020_0000 + 0x0100_0000; // Linux expects to be at 0x4020_0000
-        load(skip, base, size, &mut flash);
+        load(skip, DTB_ADDR, size, &mut flash);
 
-        let _ = flash.free().free();
+        // let _ = flash.free().free();
     }
 
     #[cfg(feature = "nand")]
@@ -311,11 +328,19 @@ extern "C" fn main() -> usize {
         core::hint::spin_loop();
     }
 
-    println!("Run payload at {}", payload_addr).ok();
+    println!("final checks - are those right?").ok();
+    // oreboot first instruction
+    check_val(ORE_ADDR, addr_to_exp(ORE_ADDR));
+    // Linux first instruction
+    check_val(LIN_ADDR, addr_to_exp(LIN_ADDR));
+    // dtb begin
+    check_val(DTB_ADDR, addr_to_exp(DTB_ADDR));
+    // dtb end
+    check_val(DTB_END1, addr_to_exp(DTB_END1));
+    check_val(DTB_END2, addr_to_exp(DTB_END2));
+    check_val(DTB_END3, addr_to_exp(DTB_END3));
 
-    check_val(0x4000_0000, addr_to_exp(0x4000_0000));
-    check_val(0x4020_0000, addr_to_exp(0x4020_0000));
-    check_val(0x4120_0000, addr_to_exp(0x4120_0000));
+    println!("Run payload at {}", payload_addr).ok();
 
     unsafe {
         let f: unsafe extern "C" fn() = transmute(payload_addr);
