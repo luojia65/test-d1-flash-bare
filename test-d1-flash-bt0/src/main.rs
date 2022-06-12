@@ -108,7 +108,7 @@ pub unsafe extern "C" fn start() -> ! {
     asm!(
         // 1. clear cache and processor states
         "csrw   mie, zero",
-        "li     t2, 0x30010",
+        "li     t2, 0x30013",
         "csrs   0x7c2, t2", // MCOR
         // 2. initialize programming langauge runtime
         // clear bss segment
