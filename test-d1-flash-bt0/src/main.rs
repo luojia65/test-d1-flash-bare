@@ -108,7 +108,7 @@ pub unsafe extern "C" fn start() -> ! {
     asm!(
         // 1. clear cache and processor states
         "csrw   mie, zero",
-        "li     t2, 0x30013",
+        "li     t2, 0x30010",
         "csrs   0x7c2, t2", // MCOR
         // 2. initialize programming langauge runtime
         // clear bss segment
@@ -153,17 +153,22 @@ fn addr_to_exp(a: usize) -> u32 {
     }
 }
 
+fn dump(addr: usize) {
+    let val = unsafe { read_volatile(addr as *mut u32) };
+    println!("DUMP {:08x}:{:x}", val, addr);
+}
+
 fn check_val(addr: usize, val: u32) {
     let rval = unsafe { read_volatile(addr as *mut u32) };
     if false && rval != val {
-        println!("MISMATCH {:#?} r{:#?} :: {:#?}", addr, rval, val).ok();
+        println!("MISMATCH {:x} r{:08x} :: {:08x}", addr, rval, val);
     }
 
     match addr {
         ORE_ADDR | LIN_ADDR | DTB_ADDR | DTB_END1 | DTB_END2 | DTB_END3 => {
             let exp = addr_to_exp(addr);
             let ok = if rval == exp as u32 { "OK" } else { "NO" };
-            println!("{:#?}@{:#?} - {:#?}? {}", rval, addr, exp, ok).ok();
+            println!("{:08x}@{:08x} - {:08x}? {}", rval, addr, exp, ok);
         }
         _ => {}
     };
@@ -194,33 +199,14 @@ fn load(
             let addr = base + i * 4 * chunks + jw;
             let val = u32::from_le_bytes([buf[jw], buf[jw + 1], buf[jw + 2], buf[jw + 3]]);
             unsafe { write_volatile(addr as *mut u32, val) };
-            check_val(addr, val);
+            if false {
+                check_val(addr, val);
+            }
             // progress indicator each 2MB
             if off % 0x10_0000 == 0 {
-                println!("a {:#?} o {:#?} v {:#?}", addr, off, val).ok();
+                println!("a {:x} o {:08x} v {:08x}", addr, off, val);
             }
         }
-        /*
-        let addr = base + i * 16;
-        let val = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-        unsafe { write_volatile(addr as *mut u32, val) };
-        check_val(addr, val);
-
-        let addr = base + i * 16 + 4;
-        let val = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
-        unsafe { write_volatile(addr as *mut u32, val) };
-        check_val(addr, val);
-
-        let addr = base + i * 16 + 8;
-        let val = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
-        unsafe { write_volatile(addr as *mut u32, val) };
-        check_val(addr, val);
-
-        let addr = base + i * 16 + 12;
-        let val = u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]);
-        unsafe { write_volatile(addr as *mut u32, val) };
-        check_val(addr, val);
-        */
     }
 }
 
@@ -247,6 +233,20 @@ extern "C" fn main() -> usize {
     let mut pc1 = gpio.portc.pc1.into_output();
     pc1.set_high().unwrap();
 
+    /*
+    // blinky
+    for _ in 0..2 {
+        for _ in 0..1000_0000 {
+            core::hint::spin_loop();
+        }
+        pc1.set_low().unwrap();
+        for _ in 0..1000_0000 {
+            core::hint::spin_loop();
+        }
+        pc1.set_high().unwrap();
+    }
+    */
+
     // prepare serial port logger
     let tx = gpio.portb.pb8.into_function_6();
     let rx = gpio.portb.pb9.into_function_6();
@@ -259,10 +259,10 @@ extern "C" fn main() -> usize {
     let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
     crate::logging::set_logger(serial);
 
-    println!("oreboot 🦀").ok();
+    println!("oreboot 🦀");
 
     let ram_size = mctl::init();
-    println!("{}M 🐏", ram_size).ok();
+    println!("{}M 🐏", ram_size);
 
     // prepare spi interface to use in flash
     let sck = gpio.portc.pc2.into_function_2();
@@ -286,39 +286,32 @@ extern "C" fn main() -> usize {
         // e.g., GigaDevice (GD) is 0xC8 and GD25Q128 is 0x4018
         // see flashrom/flashchips.h for details and more
         let id = flash.read_id();
-        println!(
-            "SPI flash vendor {:#?} part {:#?}{:#?}",
-            id[0], id[1], id[2],
-        )
-        .ok();
-        println!().ok();
+        println!("NOR flash: {:x}/{:x}{:x}", id[0], id[1], id[2],);
 
-        // oreboot
-        println!("copy oreboot").ok();
+        // println!("copy oreboot");
         let skip = 0x1 << 15; // 32K, the size of boot0
         let size = (0x1 << 16) >> 2;
         load(skip, ORE_ADDR, size, &mut flash);
 
-        // LinuxBoot
-        println!("copy LinuxBoot").ok();
+        // println!("copy LinuxBoot");
         // 32K + oreboot + 64K + 4K, see oreboot fdt
         let skip = 2 * (0x1 << 16) + (0x1 << 15) + 0x1000;
         let size = (0x00ee_0000) >> 2; // kernel
         load(skip, LIN_ADDR, size, &mut flash);
 
-        println!("copy dtb").ok();
+        // println!("copy dtb");
         // 32K + oreboot + 64K + 4K + kernel
         let skip = skip + 0xee0000;
         let size = (0x0000_e000) >> 2; // dtb
         load(skip, DTB_ADDR, size, &mut flash);
 
-        // let _ = flash.free().free();
+        let _ = flash.free().free();
     }
 
     #[cfg(feature = "nand")]
     {
         let mut flash = SpiNand::new(spi);
-        println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
+        println!("NAND flash: {:x}", flash.read_id());
         let mut page = [0u8; 256];
         flash.copy_into(0, &mut page);
         let _ = flash.free().free();
@@ -328,7 +321,21 @@ extern "C" fn main() -> usize {
         core::hint::spin_loop();
     }
 
-    println!("final checks - are those right?").ok();
+    dump(LIN_ADDR + 0x00186f00);
+    dump(LIN_ADDR + 0x00186f04);
+    dump(LIN_ADDR + 0x00186f08);
+    dump(LIN_ADDR + 0x00286f00);
+    dump(LIN_ADDR + 0x00286f04);
+    dump(LIN_ADDR + 0x00286f08);
+    dump(LIN_ADDR + 0x00386f00);
+    dump(LIN_ADDR + 0x00386f04);
+    dump(LIN_ADDR + 0x00386f08);
+    dump(LIN_ADDR + 0x00486f00);
+    dump(LIN_ADDR + 0x00486f04);
+    dump(LIN_ADDR + 0x00486f08);
+
+    /*
+    // println!("final checks - are those right?");
     // oreboot first instruction
     check_val(ORE_ADDR, addr_to_exp(ORE_ADDR));
     // Linux first instruction
@@ -339,8 +346,9 @@ extern "C" fn main() -> usize {
     check_val(DTB_END1, addr_to_exp(DTB_END1));
     check_val(DTB_END2, addr_to_exp(DTB_END2));
     check_val(DTB_END3, addr_to_exp(DTB_END3));
+    */
 
-    println!("Run payload at {}", payload_addr).ok();
+    println!("Run payload at 0x{:x}", payload_addr);
 
     unsafe {
         let f: unsafe extern "C" fn() = transmute(payload_addr);
@@ -364,13 +372,12 @@ extern "C" fn finish(address: extern "C" fn()) -> ! {
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
         println!(
-            "panic occurred in file '{}' at line {}",
+            "panic in file '{}' line {}",
             location.file(),
             location.line(),
-        )
-        .ok();
+        );
     } else {
-        println!("panic occurred but can't get location information...").ok();
+        println!("panic at unknown location");
     };
     loop {
         core::hint::spin_loop();
