@@ -307,7 +307,7 @@ extern "C" fn main() -> usize {
         // 32K + oreboot + dtfs + 4K + kernel
         let skip = skip + LIN_SIZE;
         let size = (DTB_SIZE) >> 2;
-        // load(skip, DTB_ADDR, size, &mut flash);
+        load(skip, DTB_ADDR, size, &mut flash);
 
         let _ = flash.free().free();
     }
