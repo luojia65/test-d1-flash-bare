@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+BOOT0_BUILD_DIR=target/riscv64imac-unknown-none-elf/debug
+BOOT0_BIN="$BOOT0_BUILD_DIR/test-d1-flash-bt0.bin"
+
+cargo xtask make
+cat $BOOT0_BIN $PAYLOAD > image.bin
+xfel spinor write 0 image.bin
