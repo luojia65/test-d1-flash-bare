@@ -75,11 +75,11 @@ pub struct HeadData {
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
 const ORE_ADDR: usize = RAM_BASE;
-const ORE_SIZE: usize = (0x1 << 16); // 64K
-const DTF_SIZE: usize = (0x1 << 16); // 64K
+const ORE_SIZE: usize = 0x1 << 16; // 64K
+const DTF_SIZE: usize = 0x1 << 16; // 64K
 const LIN_ADDR: usize = ORE_ADDR + 0x20_0000; // Linux expects to be at 0x4020_0000
 const LIN_SIZE: usize = 0x00ee_0000;
-const DTB_ADDR: usize = LIN_ADDR + 0x100_0000; // dtb must be 2MB aligned
+const DTB_ADDR: usize = LIN_ADDR + 0x100_0000; // dtb must be 2MB aligned and behind Linux
 const DTB_SIZE: usize = 0x0000_e000;
 const DTB_END1: usize = DTB_ADDR + 0x6000;
 const DTB_END2: usize = DTB_ADDR + 0x6010;
@@ -159,7 +159,9 @@ fn addr_to_exp(a: usize) -> u32 {
 
 fn dump(addr: usize) {
     let val = unsafe { read_volatile(addr as *mut u32) };
-    println!("DUMP {:08x}:{:x}", val, addr);
+    if false {
+        println!("DUMP {:08x}:{:x}", val, addr);
+    }
 }
 
 fn check_val(addr: usize, val: u32) {
@@ -196,18 +198,19 @@ fn load(
     let chunks = 16;
     for i in 0..size / chunks {
         let off = skip + i * 4 * chunks;
-        let buf = f.copy_into([(off >> 16) as u8, (off >> 8) as u8 % 255, off as u8 % 255]);
+        let buf = f.copy_into([(off >> 16) as u8, (off >> 8) as u8, off as u8]);
 
         for j in 0..chunks {
             let jw = 4 * j;
             let addr = base + i * 4 * chunks + jw;
-            let val = u32::from_le_bytes([buf[jw], buf[jw + 1], buf[jw + 2], buf[jw + 3]]);
+            // YOLO
+            let val = u32::from_le_bytes(buf[jw..(jw + 4)].try_into().unwrap());
             unsafe { write_volatile(addr as *mut u32, val) };
-            if false {
+            if true {
                 check_val(addr, val);
             }
             // progress indicator each 2MB
-            if off % 0x10_0000 == 0 {
+            if false && off % 0x10_0000 == 0 {
                 println!("a {:x} o {:08x} v {:08x}", addr, off, val);
             }
         }

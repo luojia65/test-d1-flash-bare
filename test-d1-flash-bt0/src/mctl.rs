@@ -213,50 +213,6 @@ pub struct dram_parameters {
     trefi: [11:0 ]
 */
 
-// taken from SPL
-#[rustfmt::skip]
-static mut DRAM_PARA: dram_parameters = dram_parameters {
-    dram_clk:            792,
-    dram_type:   0x0000_0003,
-    dram_zq:     0x007b_7bfb,
-    dram_odt_en: 0x0000_0001,
-    #[cfg(feature="nezha")]
-    dram_para1:  0x0000_10f2,
-    #[cfg(feature="lichee")]
-    dram_para1:  0x0000_10d2,
-    dram_para2:  0x0000_0000,
-    dram_mr0:    0x0000_1c70,
-    dram_mr1:    0x0000_0042,
-    #[cfg(feature="nezha")]
-    dram_mr2:    0x0000_0000,
-    #[cfg(feature="lichee")]
-    dram_mr2:    0x0000_0018,
-    dram_mr3:    0x0000_0000,
-    dram_tpr0:   0x004a_2195,
-    dram_tpr1:   0x0242_3190,
-    dram_tpr2:   0x0008_b061,
-    dram_tpr3:   0xb478_7896,
-    dram_tpr4:   0x0000_0000,
-    dram_tpr5:   0x4848_4848,
-    dram_tpr6:   0x0000_0048,
-    dram_tpr7:   0x1620_121e,
-    dram_tpr8:   0x0000_0000,
-    dram_tpr9:   0x0000_0000,
-    dram_tpr10:  0x0000_0000,
-    #[cfg(feature="nezha")]
-    dram_tpr11:  0x0076_0000,
-    #[cfg(feature="lichee")]
-    dram_tpr11:  0x0087_0000,
-    #[cfg(feature="nezha")]
-    dram_tpr12:  0x0000_0035,
-    #[cfg(feature="lichee")]
-    dram_tpr12:  0x0000_0024,
-    #[cfg(feature="nezha")]
-    dram_tpr13:  0x3405_0101,
-    #[cfg(feature="lichee")]
-    dram_tpr13:  0x3405_0100,
-};
-
 fn readl(reg: usize) -> u32 {
     unsafe { read_volatile(reg as *mut u32) }
 }
@@ -381,7 +337,7 @@ unsafe fn mctl_phy_ac_remapping(para: &mut dram_parameters) {
     }
 }
 
-unsafe fn dram_vol_set(dram_para: &mut dram_parameters) {
+fn dram_vol_set(dram_para: &mut dram_parameters) {
     // let vol = match dram_para.dram_type {
     //     2 => 47, // 1.8V
     //     3 => 25, // 1.5V
@@ -1728,7 +1684,7 @@ fn auto_scan_dram_config(para: &mut dram_parameters) -> Result<(), &'static str>
 /// # Safety
 ///
 /// No warranty. Use at own risk. Be lucky to get values from vendor.
-pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
+pub fn init_dram(para: &mut dram_parameters) -> usize {
     // STEP 1: ZQ, gating, calibration and voltage
     // Test ZQ status
     if para.dram_tpr13 & (1 << 16) > 0 {
@@ -1883,6 +1839,50 @@ pub unsafe fn init_dram(para: &mut dram_parameters) -> usize {
 }
 
 pub fn init() -> usize {
+    // taken from SPL
+    #[rustfmt::skip]
+    let mut dram_para: dram_parameters = dram_parameters {
+        dram_clk:            792,
+        dram_type:   0x0000_0003,
+        dram_zq:     0x007b_7bfb,
+        dram_odt_en: 0x0000_0001,
+        #[cfg(feature="nezha")]
+        dram_para1:  0x0000_10f2,
+        #[cfg(feature="lichee")]
+        dram_para1:  0x0000_10d2,
+        dram_para2:  0x0000_0000,
+        dram_mr0:    0x0000_1c70,
+        dram_mr1:    0x0000_0042,
+        #[cfg(feature="nezha")]
+        dram_mr2:    0x0000_0000,
+        #[cfg(feature="lichee")]
+        dram_mr2:    0x0000_0018,
+        dram_mr3:    0x0000_0000,
+        dram_tpr0:   0x004a_2195,
+        dram_tpr1:   0x0242_3190,
+        dram_tpr2:   0x0008_b061,
+        dram_tpr3:   0xb478_7896,
+        dram_tpr4:   0x0000_0000,
+        dram_tpr5:   0x4848_4848,
+        dram_tpr6:   0x0000_0048,
+        dram_tpr7:   0x1620_121e,
+        dram_tpr8:   0x0000_0000,
+        dram_tpr9:   0x0000_0000,
+        dram_tpr10:  0x0000_0000,
+        #[cfg(feature="nezha")]
+        dram_tpr11:  0x0076_0000,
+        #[cfg(feature="lichee")]
+        dram_tpr11:  0x0087_0000,
+        #[cfg(feature="nezha")]
+        dram_tpr12:  0x0000_0035,
+        #[cfg(feature="lichee")]
+        dram_tpr12:  0x0000_0024,
+        #[cfg(feature="nezha")]
+        dram_tpr13:  0x3405_0101,
+        #[cfg(feature="lichee")]
+        dram_tpr13:  0x3405_0100,
+    };
+
     // println!("DRAM INIT");
-    return unsafe { init_dram(&mut DRAM_PARA) };
+    return init_dram(&mut dram_para);
 }
