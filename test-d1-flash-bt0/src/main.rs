@@ -157,16 +157,16 @@ fn addr_to_exp(a: usize) -> u32 {
     }
 }
 
+/// helper for debugging
 fn dump(addr: usize) {
     let val = unsafe { read_volatile(addr as *mut u32) };
-    if false {
-        println!("DUMP {:08x}:{:x}", val, addr);
-    }
+    println!("DUMP {:08x}:{:x}", val, addr);
 }
 
+/// helper for debugging
 fn check_val(addr: usize, val: u32) {
     let rval = unsafe { read_volatile(addr as *mut u32) };
-    if false && rval != val {
+    if rval != val {
         println!("MISMATCH {:x} r{:08x} :: {:08x}", addr, rval, val);
     }
 
@@ -203,18 +203,22 @@ fn load(
         for j in 0..chunks {
             let jw = 4 * j;
             let addr = base + i * 4 * chunks + jw;
-            // YOLO
+            // transform bytes from slice to u32
             let val = u32::from_le_bytes(buf[jw..(jw + 4)].try_into().unwrap());
             unsafe { write_volatile(addr as *mut u32, val) };
-            if true {
+            // enable for debugging
+            if false {
                 check_val(addr, val);
             }
-            // progress indicator each 2MB
-            if false && off % 0x10_0000 == 0 {
-                println!("a {:x} o {:08x} v {:08x}", addr, off, val);
-            }
+        }
+        // progress indicator each 2MB
+        if (off - skip) % 0x10_0000 == 0 {
+            print!("➡️");
+            // for debugging
+            // println!("a {:x} o {:08x} v {:08x}", addr, off, val);
         }
     }
+    println!(".");
 }
 
 extern "C" fn main() -> usize {
@@ -295,18 +299,19 @@ extern "C" fn main() -> usize {
         let id = flash.read_id();
         println!("NOR flash: {:x}/{:x}{:x}", id[0], id[1], id[2],);
 
-        // println!("copy oreboot");
+        println!("Load... 💾");
+        // println!("oreboot");
         let skip = 0x1 << 15; // 32K, the size of boot0
         let size = ORE_SIZE >> 2;
         load(skip, ORE_ADDR, size, &mut flash);
 
-        // println!("copy LinuxBoot");
+        // println!("LinuxBoot");
         // 32K + oreboot + dtfs + 4K, see oreboot dtfs
         let skip = skip + ORE_SIZE + DTF_SIZE + 0x1000;
         let size = (LIN_SIZE) >> 2;
         load(skip, LIN_ADDR, size, &mut flash);
 
-        // println!("copy dtb");
+        // println!("dtb");
         // 32K + oreboot + dtfs + 4K + kernel
         let skip = skip + LIN_SIZE;
         let size = (DTB_SIZE) >> 2;
@@ -324,10 +329,8 @@ extern "C" fn main() -> usize {
         let _ = flash.free().free();
     }
 
-    for _ in 0..1000_0000 {
-        core::hint::spin_loop();
-    }
-
+    // debug helpers
+    /*
     dump(LIN_ADDR + 0x00186f00);
     dump(LIN_ADDR + 0x00186f04);
     dump(LIN_ADDR + 0x00186f08);
@@ -341,7 +344,6 @@ extern "C" fn main() -> usize {
     dump(LIN_ADDR + 0x00486f04);
     dump(LIN_ADDR + 0x00486f08);
 
-    /*
     // println!("final checks - are those right?");
     // oreboot first instruction
     check_val(ORE_ADDR, addr_to_exp(ORE_ADDR));
@@ -355,8 +357,11 @@ extern "C" fn main() -> usize {
     check_val(DTB_END3, addr_to_exp(DTB_END3));
     */
 
-    println!("Run payload at 0x{:x}", payload_addr);
+    for _ in 0..1000_0000 {
+        core::hint::spin_loop();
+    }
 
+    println!("Run payload at 0x{:x}", RAM_BASE);
     unsafe {
         let f: unsafe extern "C" fn() = transmute(payload_addr);
         f();
