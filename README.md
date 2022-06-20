@@ -38,6 +38,19 @@ cargo flash nor
 It would do all `cargo make` functions, and burn it into NAND or NOR flash on a xfel connected board.
 The D1 chip must be in FEL mode before running this command.
 
+To flash with a payload:
+
+```sh
+PAYLOAD=/path/to/payload ./flash
+```
+
+## SD Card
+
+```
+sudo dd if=target/riscv64imac-unknown-none-elf/debug/test-d1-flash-bt0.bin \
+  of=/dev/mmcblk0 bs=8192 seek=16
+```
+
 ## Debug Rust code
 
 You need to install any RISC-V bare metal GDB executables before continue.
